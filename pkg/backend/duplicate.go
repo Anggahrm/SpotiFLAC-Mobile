@@ -91,16 +91,32 @@ func buildISRCIndex(outputDir string) *ISRCIndex {
 }
 
 // lookup checks if an ISRC exists in the index (internal, returns bool)
+// Also verifies the file actually exists on disk (handles deleted files)
 func (idx *ISRCIndex) lookup(isrc string) (string, bool) {
 	if isrc == "" {
 		return "", false
 	}
 
 	idx.mu.RLock()
-	defer idx.mu.RUnlock()
-
 	path, exists := idx.index[strings.ToUpper(isrc)]
-	return path, exists
+	idx.mu.RUnlock()
+
+	if !exists {
+		return "", false
+	}
+
+	// Verify the file actually exists on disk
+	// This handles the case where a file was deleted after being indexed
+	info, err := os.Stat(path)
+	if err != nil || info == nil || info.Size() == 0 {
+		// File doesn't exist or is empty, remove from index
+		idx.mu.Lock()
+		defer idx.mu.Unlock()
+		delete(idx.index, strings.ToUpper(isrc))
+		return "", false
+	}
+
+	return path, true
 }
 
 // Lookup checks if an ISRC exists in the index (gomobile compatible)
