@@ -335,18 +335,23 @@ func (s *Server) progressHandler(w http.ResponseWriter, r *http.Request) {
 
 	itemID := r.URL.Query().Get("item_id")
 
-	var result string
-	if itemID != "" {
-		// Get progress for specific item
-		result = gobackend.GetAllDownloadProgress()
-	} else {
-		// Get all progress
-		result = gobackend.GetAllDownloadProgress()
-	}
+	// Get all download progress
+	result := gobackend.GetAllDownloadProgress()
 
-	var data interface{}
+	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(result), &data); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to parse progress data")
+		return
+	}
+
+	// If itemID is specified, filter to return only that item's progress
+	if itemID != "" {
+		if itemProgress, ok := data[itemID]; ok {
+			writeSuccess(w, map[string]interface{}{itemID: itemProgress})
+			return
+		}
+		// Item not found, return empty
+		writeSuccess(w, map[string]interface{}{})
 		return
 	}
 

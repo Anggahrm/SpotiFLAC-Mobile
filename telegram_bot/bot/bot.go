@@ -276,7 +276,10 @@ func (b *Bot) handleURL(chatID int64, url string) {
 		Type string `json:"type"`
 		ID   string `json:"id"`
 	}
-	json.Unmarshal([]byte(parseResult), &parsed)
+	if err := json.Unmarshal([]byte(parseResult), &parsed); err != nil {
+		b.editMessage(chatID, statusMsg.MessageID, "❌ Failed to parse URL")
+		return
+	}
 
 	switch parsed.Type {
 	case "track":
@@ -532,7 +535,10 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 		QobuzAvailable  bool `json:"qobuz_available"`
 		AmazonAvailable bool `json:"amazon_available"`
 	}
-	json.Unmarshal([]byte(availResult), &availability)
+	if err := json.Unmarshal([]byte(availResult), &availability); err != nil {
+		b.editMessage(chatID, statusMsg.MessageID, "❌ Failed to check availability")
+		return
+	}
 
 	// Determine which service to use
 	service := ""
