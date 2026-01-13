@@ -7,18 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/zarz/spotiflac-bot/pkg/backend"
 	"github.com/zarz/spotiflac-bot/pkg/config"
-)
-
-// Quality options
-const (
-	QualityLossless    = "LOSSLESS"        // 16-bit/44.1kHz
-	QualityHiRes       = "HI_RES"          // 24-bit/96kHz
-	QualityHiResMax    = "HI_RES_LOSSLESS" // 24-bit/192kHz
 )
 
 // Provider options
@@ -34,9 +28,11 @@ type Bot struct {
 	api    *tgbotapi.BotAPI
 	config *config.Config
 	// User preferences (in-memory, reset on restart)
-	userQuality  map[int64]string
 	userProvider map[int64]string
-	userLyrics   map[int64]bool
+	// Rate limiting for button clicks
+	lastAction     map[int64]time.Time
+	activeDownload map[int64]bool
+	mu             sync.RWMutex
 }
 
 // NewBot creates a new Telegram bot
@@ -63,11 +59,11 @@ func NewBot(cfg *config.Config) (*Bot, error) {
 	}
 
 	return &Bot{
-		api:          api,
-		config:       cfg,
-		userQuality:  make(map[int64]string),
-		userProvider: make(map[int64]string),
-		userLyrics:   make(map[int64]bool),
+		api:            api,
+		config:         cfg,
+		userProvider:   make(map[int64]string),
+		lastAction:     make(map[int64]time.Time),
+		activeDownload: make(map[int64]bool),
 	}, nil
 }
 
@@ -118,217 +114,106 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.handleSearchCommand(message)
 	case "download":
 		b.handleDownloadCommand(message)
-	case "settings":
-		b.showSettings(message.Chat.ID)
-	case "quality":
-		b.showQualityMenu(message.Chat.ID)
 	case "provider":
-		b.showProviderMenu(message.Chat.ID)
-	case "lyrics":
-		b.toggleLyrics(message.Chat.ID)
+		b.showProviderMenu(message.Chat.ID, 0)
 	default:
 		b.sendMessage(message.Chat.ID, "Unknown command. Use /help to see available commands.")
 	}
 }
 
 func (b *Bot) sendStartMessage(message *tgbotapi.Message) {
-	// Set default preferences for new user
+	// Set default provider for new user
 	userID := message.Chat.ID
-	if _, ok := b.userQuality[userID]; !ok {
-		b.userQuality[userID] = QualityHiResMax
-	}
 	if _, ok := b.userProvider[userID]; !ok {
 		b.userProvider[userID] = ProviderAuto
 	}
-	if _, ok := b.userLyrics[userID]; !ok {
-		b.userLyrics[userID] = true
-	}
 
-	text := `🎵 *Welcome to SpotiFLAC Bot\!*
+	text := `SpotiFLAC Bot
 
-I can download high\-quality FLAC music from Tidal, Qobuz, and Amazon Music using Spotify or Deezer links\.
+Download high-quality FLAC music from Tidal, Qobuz, and Amazon Music using Spotify or Deezer links.
 
-*Features:*
-• 🎛 Quality selection \(FLAC, Hi\-Res, Hi\-Res Max\)
-• 🎤 Embedded lyrics support
-• 🔄 Provider selection \(Tidal, Qobuz, Amazon\)
+Features:
+- Highest quality FLAC available on each platform
+- Embedded lyrics
+- Multiple provider support
 
-*How to use:*
-1\. Send me a Spotify or Deezer URL
-2\. Or use /search to find tracks
-3\. Select quality and provider
+Usage:
+1. Send a Spotify or Deezer URL
+2. Or use /search to find tracks
 
-*Commands:*
-/search \<query\> \- Search for tracks
-/settings \- View/change settings
-/quality \- Change audio quality
-/provider \- Select download provider
-/lyrics \- Toggle lyrics embedding
-/help \- Show help message
+Commands:
+/search <query> - Search for tracks
+/provider - Select download provider
+/help - Show help
 
-_Send a link or search query to get started\!_`
+Send a link or search query to get started.`
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, text)
-	msg.ParseMode = "MarkdownV2"
 	b.api.Send(msg)
 }
 
 func (b *Bot) sendHelpMessage(message *tgbotapi.Message) {
-	text := `🎵 *SpotiFLAC Bot Help*
+	text := `SpotiFLAC Bot Help
 
-*Commands:*
-• /search <query> \- Search for tracks
-• /settings \- View current settings
-• /quality \- Change audio quality
-• /provider \- Select download provider
-• /lyrics \- Toggle lyrics embedding
+Commands:
+/search <query> - Search for tracks
+/provider - Select download provider
 
-*Quality Options:*
-• 🎵 FLAC Lossless \(16\-bit/44\.1kHz\)
-• 🎵 Hi\-Res FLAC \(24\-bit/96kHz\)
-• 🎵 Hi\-Res FLAC Max \(24\-bit/192kHz\)
+Providers:
+- Tidal
+- Qobuz
+- Amazon Music
+- Auto (tries all)
 
-*Providers:*
-• 🔷 Tidal
-• 🟣 Qobuz  
-• 🟠 Amazon Music
-• 🔄 Auto \(tries all\)
+Supported URLs:
+- Spotify track/album/playlist
+- Deezer track/album
 
-*Supported URLs:*
-• Spotify track/album/playlist
-• Deezer track/album
-
-*Note:* Telegram has a 50MB file size limit\.`
+Note: Telegram has a 50MB file size limit.`
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, text)
-	msg.ParseMode = "MarkdownV2"
 	b.api.Send(msg)
 }
 
-func (b *Bot) showSettings(chatID int64) {
-	quality := b.getUserQuality(chatID)
-	provider := b.getUserProvider(chatID)
-	lyrics := b.getUserLyrics(chatID)
-
-	qualityName := getQualityName(quality)
-	providerName := getProviderName(provider)
-	lyricsStatus := "❌ Off"
-	if lyrics {
-		lyricsStatus = "✅ On"
-	}
-
-	text := fmt.Sprintf(`⚙️ *Current Settings*
-
-🎛 *Quality:* %s
-📦 *Provider:* %s
-🎤 *Lyrics:* %s
-
-Use the buttons below to change settings:`,
-		escapeMarkdownV2(qualityName),
-		escapeMarkdownV2(providerName),
-		lyricsStatus)
-
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🎛 Quality", "menu:quality"),
-			tgbotapi.NewInlineKeyboardButtonData("📦 Provider", "menu:provider"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🎤 Toggle Lyrics", "toggle:lyrics"),
-		),
-	)
-
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = "MarkdownV2"
-	msg.ReplyMarkup = keyboard
-	b.api.Send(msg)
-}
-
-func (b *Bot) showQualityMenu(chatID int64) {
-	currentQuality := b.getUserQuality(chatID)
-
-	text := `🎛 *Select Audio Quality*
-
-Choose your preferred download quality:`
-
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(
-				getCheckmark(currentQuality == QualityLossless)+" FLAC Lossless (16-bit)",
-				"quality:"+QualityLossless),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(
-				getCheckmark(currentQuality == QualityHiRes)+" Hi-Res FLAC (24-bit/96kHz)",
-				"quality:"+QualityHiRes),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(
-				getCheckmark(currentQuality == QualityHiResMax)+" Hi-Res FLAC Max (24-bit/192kHz)",
-				"quality:"+QualityHiResMax),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("« Back to Settings", "menu:settings"),
-		),
-	)
-
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = "Markdown"
-	msg.ReplyMarkup = keyboard
-	b.api.Send(msg)
-}
-
-func (b *Bot) showProviderMenu(chatID int64) {
+func (b *Bot) showProviderMenu(chatID int64, messageID int) {
 	currentProvider := b.getUserProvider(chatID)
 
-	text := `📦 *Select Download Provider*
-
-Choose where to download from:`
+	text := "Select Download Provider\n\nCurrent: " + getProviderName(currentProvider)
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(
-				getCheckmark(currentProvider == ProviderAuto)+" 🔄 Auto (Best Available)",
+				getCheckmark(currentProvider == ProviderAuto)+" Auto",
 				"provider:"+ProviderAuto),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(
-				getCheckmark(currentProvider == ProviderTidal)+" 🔷 Tidal",
+				getCheckmark(currentProvider == ProviderTidal)+" Tidal",
 				"provider:"+ProviderTidal),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(
-				getCheckmark(currentProvider == ProviderQobuz)+" 🟣 Qobuz",
+				getCheckmark(currentProvider == ProviderQobuz)+" Qobuz",
 				"provider:"+ProviderQobuz),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(
-				getCheckmark(currentProvider == ProviderAmazon)+" 🟠 Amazon Music",
+				getCheckmark(currentProvider == ProviderAmazon)+" Amazon Music",
 				"provider:"+ProviderAmazon),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("« Back to Settings", "menu:settings"),
 		),
 	)
 
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = "Markdown"
-	msg.ReplyMarkup = keyboard
-	b.api.Send(msg)
-}
-
-func (b *Bot) toggleLyrics(chatID int64) {
-	current := b.getUserLyrics(chatID)
-	b.userLyrics[chatID] = !current
-
-	status := "disabled"
-	emoji := "❌"
-	if b.userLyrics[chatID] {
-		status = "enabled"
-		emoji = "✅"
+	if messageID > 0 {
+		// Edit existing message
+		edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
+		edit.ReplyMarkup = &keyboard
+		b.api.Send(edit)
+	} else {
+		// Send new message
+		msg := tgbotapi.NewMessage(chatID, text)
+		msg.ReplyMarkup = keyboard
+		b.api.Send(msg)
 	}
-
-	b.sendMessage(chatID, fmt.Sprintf("%s Lyrics embedding %s", emoji, status))
 }
 
 func (b *Bot) handleSearchCommand(message *tgbotapi.Message) {
@@ -370,11 +255,11 @@ func (b *Bot) handleMessage(message *tgbotapi.Message) {
 
 func (b *Bot) performSearch(chatID int64, query string) {
 	// Send "searching" status
-	statusMsg, _ := b.sendMessage(chatID, "🔍 Searching...")
+	statusMsg, _ := b.sendMessage(chatID, "Searching...")
 
 	result, err := backend.SearchDeezerAll(query, 5, 0)
 	if err != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Search failed: "+err.Error())
+		b.editMessage(chatID, statusMsg.MessageID, "Search failed: "+err.Error())
 		return
 	}
 
@@ -393,24 +278,24 @@ func (b *Bot) performSearch(chatID int64, query string) {
 	}
 
 	if err := json.Unmarshal([]byte(result), &searchResult); err != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Failed to parse search results")
+		b.editMessage(chatID, statusMsg.MessageID, "Failed to parse search results")
 		return
 	}
 
 	if len(searchResult.Tracks) == 0 {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ No tracks found for: "+query)
+		b.editMessage(chatID, statusMsg.MessageID, "No tracks found for: "+query)
 		return
 	}
 
 	// Build response with inline keyboard
-	text := "🎵 *Search Results*\n\n"
+	text := "Search Results\n\n"
 	var buttons [][]tgbotapi.InlineKeyboardButton
 
 	for i, track := range searchResult.Tracks {
 		duration := formatDuration(track.DurationMS)
-		text += fmt.Sprintf("%d. *%s* - %s\n   📀 %s • %s\n\n",
-			i+1, escapeMarkdown(track.Name), escapeMarkdown(track.Artists),
-			escapeMarkdown(track.AlbumName), duration)
+		text += fmt.Sprintf("%d. %s - %s\n   %s | %s\n\n",
+			i+1, track.Name, track.Artists,
+			track.AlbumName, duration)
 
 		// Create download button for each track
 		callbackData := fmt.Sprintf("dl:%s", track.SpotifyID)
@@ -419,7 +304,7 @@ func (b *Bot) performSearch(chatID int64, query string) {
 		}
 		buttons = append(buttons, []tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardButtonData(
-				fmt.Sprintf("⬇️ %d. %s", i+1, truncateString(track.Name, 30)),
+				fmt.Sprintf("%d. %s", i+1, truncateString(track.Name, 35)),
 				callbackData,
 			),
 		})
@@ -431,13 +316,12 @@ func (b *Bot) performSearch(chatID int64, query string) {
 	b.api.Request(tgbotapi.NewDeleteMessage(chatID, statusMsg.MessageID))
 
 	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = keyboard
 	b.api.Send(msg)
 }
 
 func (b *Bot) handleURL(chatID int64, url string) {
-	statusMsg, _ := b.sendMessage(chatID, "📥 Fetching metadata...")
+	statusMsg, _ := b.sendMessage(chatID, "Fetching metadata...")
 
 	// Parse the URL first
 	var parseResult string
@@ -450,7 +334,7 @@ func (b *Bot) handleURL(chatID int64, url string) {
 	}
 
 	if err != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Invalid URL: "+err.Error())
+		b.editMessage(chatID, statusMsg.MessageID, "Invalid URL: "+err.Error())
 		return
 	}
 
@@ -459,7 +343,7 @@ func (b *Bot) handleURL(chatID int64, url string) {
 		ID   string `json:"id"`
 	}
 	if err := json.Unmarshal([]byte(parseResult), &parsed); err != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Failed to parse URL")
+		b.editMessage(chatID, statusMsg.MessageID, "Failed to parse URL")
 		return
 	}
 
@@ -471,7 +355,7 @@ func (b *Bot) handleURL(chatID int64, url string) {
 	case "playlist":
 		b.handlePlaylistURL(chatID, statusMsg.MessageID, url)
 	default:
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Unsupported URL type: "+parsed.Type)
+		b.editMessage(chatID, statusMsg.MessageID, "Unsupported URL type: "+parsed.Type)
 	}
 }
 
@@ -487,7 +371,7 @@ func (b *Bot) handleTrackURL(chatID int64, statusMsgID int, url string, resource
 	}
 
 	if err != nil {
-		b.editMessage(chatID, statusMsgID, "❌ Failed to fetch metadata: "+err.Error())
+		b.editMessage(chatID, statusMsgID, "Failed to fetch metadata: "+err.Error())
 		return
 	}
 
@@ -510,7 +394,7 @@ func (b *Bot) handleTrackURL(chatID int64, statusMsgID int, url string, resource
 	}
 
 	if err := json.Unmarshal([]byte(metadataResult), &trackData); err != nil {
-		b.editMessage(chatID, statusMsgID, "❌ Failed to parse metadata")
+		b.editMessage(chatID, statusMsgID, "Failed to parse metadata")
 		return
 	}
 
@@ -538,52 +422,31 @@ func (b *Bot) handleTrackURL(chatID int64, statusMsgID int, url string, resource
 	}
 
 	// Build availability text
-	availText := ""
+	var availServices []string
 	if availability.Tidal {
-		availText += "🔷 Tidal "
+		availServices = append(availServices, "Tidal")
 	}
 	if availability.Qobuz {
-		availText += "🟣 Qobuz "
+		availServices = append(availServices, "Qobuz")
 	}
 	if availability.Amazon {
-		availText += "🟠 Amazon "
+		availServices = append(availServices, "Amazon")
 	}
-	if availText == "" {
-		availText = "❌ Not available"
-	}
-
-	// Get user settings
-	quality := b.getUserQuality(chatID)
-	provider := b.getUserProvider(chatID)
-	lyrics := b.getUserLyrics(chatID)
-
-	qualityName := getQualityName(quality)
-	providerName := getProviderName(provider)
-	lyricsEmoji := "❌"
-	if lyrics {
-		lyricsEmoji = "✅"
+	availText := "Not available"
+	if len(availServices) > 0 {
+		availText = strings.Join(availServices, ", ")
 	}
 
-	// Show track info with settings and download button
-	text := fmt.Sprintf(`🎵 *%s*
-👤 %s
-📀 %s
-⏱ %s
-
-*Available on:* %s
-
-*Your Settings:*
-🎛 Quality: %s
-📦 Provider: %s
-🎤 Lyrics: %s`,
-		escapeMarkdown(track.Name),
-		escapeMarkdown(track.Artists),
-		escapeMarkdown(track.AlbumName),
+	// Show track info with download button
+	text := fmt.Sprintf(`%s - %s
+Album: %s
+Duration: %s
+Available on: %s`,
+		track.Name,
+		track.Artists,
+		track.AlbumName,
 		formatDuration(track.DurationMS),
-		availText,
-		escapeMarkdown(qualityName),
-		escapeMarkdown(providerName),
-		lyricsEmoji)
+		availText)
 
 	callbackData := fmt.Sprintf("dl:%s", track.SpotifyID)
 	if len(callbackData) > 64 {
@@ -592,14 +455,7 @@ func (b *Bot) handleTrackURL(chatID int64, statusMsgID int, url string, resource
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⬇️ Download", callbackData),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🎛 Quality", "menu:quality"),
-			tgbotapi.NewInlineKeyboardButtonData("📦 Provider", "menu:provider"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🎤 Toggle Lyrics", "toggle:lyrics"),
+			tgbotapi.NewInlineKeyboardButtonData("Download", callbackData),
 		),
 	)
 
@@ -607,7 +463,6 @@ func (b *Bot) handleTrackURL(chatID int64, statusMsgID int, url string, resource
 	b.api.Request(tgbotapi.NewDeleteMessage(chatID, statusMsgID))
 
 	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = keyboard
 	b.api.Send(msg)
 }
@@ -629,7 +484,7 @@ func (b *Bot) handleAlbumURL(chatID int64, statusMsgID int, url string) {
 	}
 
 	if err != nil {
-		b.editMessage(chatID, statusMsgID, "❌ Failed to fetch album: "+err.Error())
+		b.editMessage(chatID, statusMsgID, "Failed to fetch album: "+err.Error())
 		return
 	}
 
@@ -652,14 +507,14 @@ func (b *Bot) handleAlbumURL(chatID int64, statusMsgID int, url string) {
 	}
 
 	if err := json.Unmarshal([]byte(metadataResult), &albumData); err != nil {
-		b.editMessage(chatID, statusMsgID, "❌ Failed to parse album data")
+		b.editMessage(chatID, statusMsgID, "Failed to parse album data")
 		return
 	}
 
 	// Show album info
-	text := fmt.Sprintf("📀 *%s*\n👤 %s\n📅 %s\n🎵 %d tracks\n\n",
-		escapeMarkdown(albumData.AlbumInfo.Name),
-		escapeMarkdown(albumData.AlbumInfo.Artists),
+	text := fmt.Sprintf("%s - %s\nRelease: %s\nTracks: %d\n\n",
+		albumData.AlbumInfo.Name,
+		albumData.AlbumInfo.Artists,
 		albumData.AlbumInfo.ReleaseDate,
 		albumData.AlbumInfo.TotalTracks)
 
@@ -673,15 +528,15 @@ func (b *Bot) handleAlbumURL(chatID int64, statusMsgID int, url string) {
 		track := albumData.TrackList[i]
 		text += fmt.Sprintf("%d. %s (%s)\n",
 			track.TrackNumber,
-			escapeMarkdown(track.Name),
+			track.Name,
 			formatDuration(track.DurationMS))
 	}
 
 	if len(albumData.TrackList) > maxTracks {
-		text += fmt.Sprintf("\n_...and %d more tracks_\n", len(albumData.TrackList)-maxTracks)
+		text += fmt.Sprintf("\n...and %d more tracks\n", len(albumData.TrackList)-maxTracks)
 	}
 
-	text += "\n_Select a track to download:_"
+	text += "\nSelect a track to download:"
 
 	// Create download buttons for individual tracks (first 5)
 	var buttons [][]tgbotapi.InlineKeyboardButton
@@ -693,7 +548,7 @@ func (b *Bot) handleAlbumURL(chatID int64, statusMsgID int, url string) {
 		}
 		buttons = append(buttons, []tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardButtonData(
-				fmt.Sprintf("⬇️ %d. %s", track.TrackNumber, truncateString(track.Name, 25)),
+				fmt.Sprintf("%d. %s", track.TrackNumber, truncateString(track.Name, 30)),
 				callbackData,
 			),
 		})
@@ -704,56 +559,81 @@ func (b *Bot) handleAlbumURL(chatID int64, statusMsgID int, url string) {
 	b.api.Request(tgbotapi.NewDeleteMessage(chatID, statusMsgID))
 
 	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = keyboard
 	b.api.Send(msg)
 }
 
 func (b *Bot) handlePlaylistURL(chatID int64, statusMsgID int, url string) {
-	b.editMessage(chatID, statusMsgID, "📋 Playlist support coming soon! For now, please share individual track URLs.")
+	b.editMessage(chatID, statusMsgID, "Playlist support coming soon. Please share individual track URLs.")
+}
+
+// canPerformAction checks if user can perform an action (rate limiting)
+func (b *Bot) canPerformAction(chatID int64) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	lastTime, exists := b.lastAction[chatID]
+	if exists && time.Since(lastTime) < 2*time.Second {
+		return false
+	}
+	b.lastAction[chatID] = time.Now()
+	return true
+}
+
+// isDownloading checks if user has active download
+func (b *Bot) isDownloading(chatID int64) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.activeDownload[chatID]
+}
+
+// setDownloading sets download status
+func (b *Bot) setDownloading(chatID int64, status bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.activeDownload[chatID] = status
 }
 
 func (b *Bot) handleCallbackQuery(callback *tgbotapi.CallbackQuery) {
 	data := callback.Data
 	chatID := callback.Message.Chat.ID
+	messageID := callback.Message.MessageID
 
-	// Answer callback to remove loading indicator
-	b.api.Request(tgbotapi.NewCallback(callback.ID, ""))
+	// Rate limiting
+	if !b.canPerformAction(chatID) {
+		b.api.Request(tgbotapi.NewCallback(callback.ID, "Please wait..."))
+		return
+	}
 
 	// Handle different callback types
 	switch {
 	case strings.HasPrefix(data, "dl:"):
+		// Check if already downloading
+		if b.isDownloading(chatID) {
+			b.api.Request(tgbotapi.NewCallback(callback.ID, "Download in progress"))
+			return
+		}
+		b.api.Request(tgbotapi.NewCallback(callback.ID, "Starting download..."))
 		trackID := strings.TrimPrefix(data, "dl:")
-		b.downloadTrack(chatID, trackID)
-
-	case strings.HasPrefix(data, "quality:"):
-		quality := strings.TrimPrefix(data, "quality:")
-		b.userQuality[chatID] = quality
-		b.api.Request(tgbotapi.NewCallback(callback.ID, "✅ Quality updated"))
-		b.showQualityMenu(chatID)
+		go b.downloadTrack(chatID, trackID)
 
 	case strings.HasPrefix(data, "provider:"):
 		provider := strings.TrimPrefix(data, "provider:")
 		b.userProvider[chatID] = provider
-		b.api.Request(tgbotapi.NewCallback(callback.ID, "✅ Provider updated"))
-		b.showProviderMenu(chatID)
+		b.api.Request(tgbotapi.NewCallback(callback.ID, "Provider: "+getProviderName(provider)))
+		b.showProviderMenu(chatID, messageID)
 
-	case data == "toggle:lyrics":
-		b.toggleLyrics(chatID)
-
-	case data == "menu:quality":
-		b.showQualityMenu(chatID)
-
-	case data == "menu:provider":
-		b.showProviderMenu(chatID)
-
-	case data == "menu:settings":
-		b.showSettings(chatID)
+	default:
+		b.api.Request(tgbotapi.NewCallback(callback.ID, ""))
 	}
 }
 
 func (b *Bot) downloadTrack(chatID int64, trackID string) {
-	statusMsg, _ := b.sendMessage(chatID, "⏳ Starting download...")
+	// Mark as downloading
+	b.setDownloading(chatID, true)
+	defer b.setDownloading(chatID, false)
+
+	statusMsg, _ := b.sendMessage(chatID, "Starting download...")
 
 	// First, get track metadata
 	var metadataResult string
@@ -769,7 +649,7 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 	}
 
 	if err != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Failed to get track info: "+err.Error())
+		b.editMessage(chatID, statusMsg.MessageID, "Failed to get track info: "+err.Error())
 		return
 	}
 
@@ -791,61 +671,51 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 	}
 
 	if err := json.Unmarshal([]byte(metadataResult), &trackData); err != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Failed to parse track metadata")
+		b.editMessage(chatID, statusMsg.MessageID, "Failed to parse track metadata")
 		return
 	}
 
 	track := trackData.Track
 
-	// Get user preferences
-	quality := b.getUserQuality(chatID)
+	// Get user provider preference
 	provider := b.getUserProvider(chatID)
-	embedLyrics := b.getUserLyrics(chatID)
 
-	qualityName := getQualityName(quality)
-
-	b.editMessage(chatID, statusMsg.MessageID, fmt.Sprintf("🔍 Checking availability for: *%s* - %s",
-		escapeMarkdown(track.Name), escapeMarkdown(track.Artists)))
+	b.editMessage(chatID, statusMsg.MessageID, fmt.Sprintf("Checking availability: %s - %s", track.Name, track.Artists))
 
 	// Check availability - use different method based on track source
 	var availResult string
 	var availErr error
 
 	if strings.HasPrefix(track.SpotifyID, "deezer:") {
-		// Track is from Deezer, use Deezer ID to check availability
 		deezerID := strings.TrimPrefix(track.SpotifyID, "deezer:")
 		availResult, availErr = backend.CheckAvailabilityFromDeezerID(deezerID)
 	} else if track.SpotifyID != "" {
-		// Track has Spotify ID
 		availResult, availErr = backend.CheckAvailability(track.SpotifyID, track.ISRC)
 	} else if track.ISRC != "" {
-		// No Spotify ID but has ISRC - try with empty Spotify ID
 		availResult, availErr = backend.CheckAvailability("", track.ISRC)
 	} else {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Track has no identifier for availability check")
+		b.editMessage(chatID, statusMsg.MessageID, "Track has no identifier for availability check")
 		return
 	}
 
 	if availErr != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Track not available on any service: "+availErr.Error())
+		b.editMessage(chatID, statusMsg.MessageID, "Track not available: "+availErr.Error())
 		return
 	}
 
-	// Parse availability - JSON fields are: tidal, qobuz, amazon (not tidal_available etc.)
 	var availability struct {
 		Tidal  bool `json:"tidal"`
 		Qobuz  bool `json:"qobuz"`
 		Amazon bool `json:"amazon"`
 	}
 	if err := json.Unmarshal([]byte(availResult), &availability); err != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Failed to check availability")
+		b.editMessage(chatID, statusMsg.MessageID, "Failed to check availability")
 		return
 	}
 
 	// Determine which service to use based on user preference
 	service := ""
 	if provider == ProviderAuto {
-		// Auto: try in order of preference
 		if availability.Tidal {
 			service = ProviderTidal
 		} else if availability.Qobuz {
@@ -854,7 +724,6 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 			service = ProviderAmazon
 		}
 	} else {
-		// User selected specific provider
 		switch provider {
 		case ProviderTidal:
 			if availability.Tidal {
@@ -874,7 +743,7 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 	if service == "" {
 		// If selected provider not available, try others
 		if provider != ProviderAuto {
-			b.editMessage(chatID, statusMsg.MessageID, fmt.Sprintf("❌ Track not available on %s. Trying other providers...", getProviderName(provider)))
+			b.editMessage(chatID, statusMsg.MessageID, fmt.Sprintf("Not available on %s, trying other providers...", getProviderName(provider)))
 			if availability.Tidal {
 				service = ProviderTidal
 			} else if availability.Qobuz {
@@ -885,23 +754,18 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 		}
 
 		if service == "" {
-			b.editMessage(chatID, statusMsg.MessageID, "❌ Track not available on any supported service")
+			b.editMessage(chatID, statusMsg.MessageID, "Track not available on any supported service")
 			return
 		}
 	}
 
-	providerEmoji := getProviderEmoji(service)
-	b.editMessage(chatID, statusMsg.MessageID, fmt.Sprintf("%s Downloading from *%s* \\| Quality: *%s*\n🎵 *%s* \\- %s",
-		providerEmoji,
-		escapeMarkdownV2(capitalizeFirst(service)),
-		escapeMarkdownV2(qualityName),
-		escapeMarkdownV2(track.Name),
-		escapeMarkdownV2(track.Artists)))
+	b.editMessage(chatID, statusMsg.MessageID, fmt.Sprintf("Downloading from %s: %s - %s",
+		capitalizeFirst(service), track.Name, track.Artists))
 
 	// Create unique item ID for tracking
 	itemID := fmt.Sprintf("tg_%d_%d", chatID, time.Now().UnixNano())
 
-	// Prepare download request
+	// Prepare download request - always use highest quality
 	downloadReq := map[string]interface{}{
 		"isrc":                    track.ISRC,
 		"service":                 service,
@@ -913,8 +777,8 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 		"cover_url":               track.Images,
 		"output_dir":              b.config.DownloadDir,
 		"filename_format":         "{artist} - {title}",
-		"quality":                 quality,
-		"embed_lyrics":            embedLyrics,
+		"quality":                 "HI_RES_LOSSLESS", // Always highest quality
+		"embed_lyrics":            true,              // Always embed lyrics
 		"embed_max_quality_cover": true,
 		"track_number":            track.TrackNumber,
 		"disc_number":             track.DiscNumber,
@@ -935,7 +799,7 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 	}
 
 	if err != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Download failed: "+err.Error())
+		b.editMessage(chatID, statusMsg.MessageID, "Download failed: "+err.Error())
 		return
 	}
 
@@ -949,22 +813,22 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 	}
 
 	if err := json.Unmarshal([]byte(result), &downloadResult); err != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Failed to parse download result")
+		b.editMessage(chatID, statusMsg.MessageID, "Failed to parse download result")
 		return
 	}
 
 	if !downloadResult.Success {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Download failed: "+downloadResult.Error)
+		b.editMessage(chatID, statusMsg.MessageID, "Download failed: "+downloadResult.Error)
 		return
 	}
 
-	b.editMessage(chatID, statusMsg.MessageID, "📤 Uploading to Telegram...")
+	b.editMessage(chatID, statusMsg.MessageID, "Uploading to Telegram...")
 
 	// Upload file to Telegram
 	err = b.uploadFile(chatID, downloadResult.FilePath, track.Name, track.Artists,
-		downloadResult.ActualBitDepth, downloadResult.ActualSampleRate, downloadResult.Service, embedLyrics)
+		downloadResult.ActualBitDepth, downloadResult.ActualSampleRate, downloadResult.Service)
 	if err != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Upload failed: "+err.Error())
+		b.editMessage(chatID, statusMsg.MessageID, "Upload failed: "+err.Error())
 		return
 	}
 
@@ -975,7 +839,7 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 	os.Remove(downloadResult.FilePath)
 }
 
-func (b *Bot) uploadFile(chatID int64, filePath, trackName, artists string, bitDepth, sampleRate int, service string, hasLyrics bool) error {
+func (b *Bot) uploadFile(chatID int64, filePath, trackName, artists string, bitDepth, sampleRate int, service string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
@@ -1004,19 +868,10 @@ func (b *Bot) uploadFile(chatID int64, filePath, trackName, artists string, bitD
 	}
 
 	// Create caption with quality info
-	providerEmoji := getProviderEmoji(service)
-	lyricsEmoji := "❌"
-	if hasLyrics {
-		lyricsEmoji = "✅"
-	}
-
-	caption := fmt.Sprintf("🎵 *%s*\n👤 %s\n%s %s",
-		escapeMarkdown(trackName), escapeMarkdown(artists),
-		providerEmoji, capitalizeFirst(service))
+	caption := fmt.Sprintf("%s - %s\nSource: %s", trackName, artists, capitalizeFirst(service))
 	if bitDepth > 0 && sampleRate > 0 {
-		caption += fmt.Sprintf("\n🎛 %d-bit / %.1f kHz", bitDepth, float64(sampleRate)/1000)
+		caption += fmt.Sprintf("\nQuality: %d-bit / %.1f kHz", bitDepth, float64(sampleRate)/1000)
 	}
-	caption += fmt.Sprintf("\n🎤 Lyrics: %s", lyricsEmoji)
 
 	// Send as audio if it's a FLAC file
 	if strings.HasSuffix(strings.ToLower(filePath), ".flac") ||
@@ -1025,13 +880,11 @@ func (b *Bot) uploadFile(chatID int64, filePath, trackName, artists string, bitD
 		audio.Title = trackName
 		audio.Performer = artists
 		audio.Caption = caption
-		audio.ParseMode = "Markdown"
 		_, err = b.api.Send(audio)
 	} else {
 		// Send as document
 		doc := tgbotapi.NewDocument(chatID, fileBytes)
 		doc.Caption = caption
-		doc.ParseMode = "Markdown"
 		_, err = b.api.Send(doc)
 	}
 
@@ -1067,10 +920,10 @@ func (b *Bot) handleInlineQuery(query *tgbotapi.InlineQuery) {
 	for i, track := range searchResult.Tracks {
 		resultID := fmt.Sprintf("%d_%s", i, track.SpotifyID)
 
-		text := fmt.Sprintf("🎵 *%s*\n👤 %s\n📀 %s\n⏱ %s\n\n_Send this to download_",
-			escapeMarkdown(track.Name),
-			escapeMarkdown(track.Artists),
-			escapeMarkdown(track.AlbumName),
+		text := fmt.Sprintf("%s - %s\nAlbum: %s\nDuration: %s",
+			track.Name,
+			track.Artists,
+			track.AlbumName,
 			formatDuration(track.DurationMS))
 
 		article := tgbotapi.NewInlineQueryResultArticle(
@@ -1078,7 +931,7 @@ func (b *Bot) handleInlineQuery(query *tgbotapi.InlineQuery) {
 			track.Name+" - "+track.Artists,
 			text,
 		)
-		article.Description = track.AlbumName + " • " + formatDuration(track.DurationMS)
+		article.Description = track.AlbumName + " | " + formatDuration(track.DurationMS)
 		if track.Images != "" {
 			article.ThumbURL = track.Images
 		}
@@ -1097,25 +950,13 @@ func (b *Bot) handleInlineQuery(query *tgbotapi.InlineQuery) {
 
 // Helper functions
 
-func (b *Bot) getUserQuality(chatID int64) string {
-	if q, ok := b.userQuality[chatID]; ok {
-		return q
-	}
-	return QualityHiResMax // Default
-}
-
 func (b *Bot) getUserProvider(chatID int64) string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	if p, ok := b.userProvider[chatID]; ok {
 		return p
 	}
 	return ProviderAuto // Default
-}
-
-func (b *Bot) getUserLyrics(chatID int64) bool {
-	if l, ok := b.userLyrics[chatID]; ok {
-		return l
-	}
-	return true // Default: enabled
 }
 
 func (b *Bot) sendMessage(chatID int64, text string) (*tgbotapi.Message, error) {
@@ -1126,7 +967,6 @@ func (b *Bot) sendMessage(chatID int64, text string) (*tgbotapi.Message, error) 
 
 func (b *Bot) editMessage(chatID int64, messageID int, text string) {
 	edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
-	edit.ParseMode = "MarkdownV2"
 	b.api.Send(edit)
 }
 
@@ -1135,26 +975,6 @@ func formatDuration(ms int) string {
 	minutes := seconds / 60
 	seconds = seconds % 60
 	return fmt.Sprintf("%d:%02d", minutes, seconds)
-}
-
-func escapeMarkdown(text string) string {
-	replacer := strings.NewReplacer(
-		"_", "\\_",
-		"*", "\\*",
-		"[", "\\[",
-		"]", "\\]",
-		"`", "\\`",
-	)
-	return replacer.Replace(text)
-}
-
-func escapeMarkdownV2(text string) string {
-	specialChars := []string{"_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"}
-	result := text
-	for _, char := range specialChars {
-		result = strings.ReplaceAll(result, char, "\\"+char)
-	}
-	return result
 }
 
 func truncateString(s string, maxLen int) string {
@@ -1171,19 +991,6 @@ func capitalizeFirst(s string) string {
 	return strings.ToUpper(string(s[0])) + s[1:]
 }
 
-func getQualityName(quality string) string {
-	switch quality {
-	case QualityLossless:
-		return "FLAC Lossless (16-bit)"
-	case QualityHiRes:
-		return "Hi-Res FLAC (24-bit/96kHz)"
-	case QualityHiResMax:
-		return "Hi-Res FLAC Max (24-bit/192kHz)"
-	default:
-		return quality
-	}
-}
-
 func getProviderName(provider string) string {
 	switch provider {
 	case ProviderTidal:
@@ -1193,28 +1000,15 @@ func getProviderName(provider string) string {
 	case ProviderAmazon:
 		return "Amazon Music"
 	case ProviderAuto:
-		return "Auto (Best Available)"
+		return "Auto"
 	default:
 		return provider
 	}
 }
 
-func getProviderEmoji(provider string) string {
-	switch provider {
-	case ProviderTidal:
-		return "🔷"
-	case ProviderQobuz:
-		return "🟣"
-	case ProviderAmazon:
-		return "🟠"
-	default:
-		return "🔄"
-	}
-}
-
 func getCheckmark(selected bool) string {
 	if selected {
-		return "✅"
+		return "[x]"
 	}
-	return "⬜"
+	return "[ ]"
 }
