@@ -516,24 +516,36 @@ func (b *Bot) handleTrackURL(chatID int64, statusMsgID int, url string, resource
 
 	track := trackData.Track
 
-	// Check availability
-	availResult, _ := backend.CheckAvailability(track.SpotifyID, track.ISRC)
-	var availability struct {
-		TidalAvailable  bool `json:"tidal_available"`
-		QobuzAvailable  bool `json:"qobuz_available"`
-		AmazonAvailable bool `json:"amazon_available"`
+	// Check availability - use different method based on track source
+	var availResult string
+	var availErr error
+	if strings.HasPrefix(track.SpotifyID, "deezer:") {
+		deezerID := strings.TrimPrefix(track.SpotifyID, "deezer:")
+		availResult, availErr = backend.CheckAvailabilityFromDeezerID(deezerID)
+	} else {
+		availResult, availErr = backend.CheckAvailability(track.SpotifyID, track.ISRC)
 	}
-	json.Unmarshal([]byte(availResult), &availability)
+	
+	var availability struct {
+		Tidal  bool `json:"tidal"`
+		Qobuz  bool `json:"qobuz"`
+		Amazon bool `json:"amazon"`
+	}
+	
+	// Only parse if we got a valid result
+	if availErr == nil && availResult != "" {
+		json.Unmarshal([]byte(availResult), &availability)
+	}
 
 	// Build availability text
 	availText := ""
-	if availability.TidalAvailable {
+	if availability.Tidal {
 		availText += "🔷 Tidal "
 	}
-	if availability.QobuzAvailable {
+	if availability.Qobuz {
 		availText += "🟣 Qobuz "
 	}
-	if availability.AmazonAvailable {
+	if availability.Amazon {
 		availText += "🟠 Amazon "
 	}
 	if availText == "" {
@@ -795,17 +807,35 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 	b.editMessage(chatID, statusMsg.MessageID, fmt.Sprintf("🔍 Checking availability for: *%s* - %s",
 		escapeMarkdown(track.Name), escapeMarkdown(track.Artists)))
 
-	// Check availability
-	availResult, err := backend.CheckAvailability(track.SpotifyID, track.ISRC)
-	if err != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "❌ Track not available on any service")
+	// Check availability - use different method based on track source
+	var availResult string
+	var availErr error
+
+	if strings.HasPrefix(track.SpotifyID, "deezer:") {
+		// Track is from Deezer, use Deezer ID to check availability
+		deezerID := strings.TrimPrefix(track.SpotifyID, "deezer:")
+		availResult, availErr = backend.CheckAvailabilityFromDeezerID(deezerID)
+	} else if track.SpotifyID != "" {
+		// Track has Spotify ID
+		availResult, availErr = backend.CheckAvailability(track.SpotifyID, track.ISRC)
+	} else if track.ISRC != "" {
+		// No Spotify ID but has ISRC - try with empty Spotify ID
+		availResult, availErr = backend.CheckAvailability("", track.ISRC)
+	} else {
+		b.editMessage(chatID, statusMsg.MessageID, "❌ Track has no identifier for availability check")
 		return
 	}
 
+	if availErr != nil {
+		b.editMessage(chatID, statusMsg.MessageID, "❌ Track not available on any service: "+availErr.Error())
+		return
+	}
+
+	// Parse availability - JSON fields are: tidal, qobuz, amazon (not tidal_available etc.)
 	var availability struct {
-		TidalAvailable  bool `json:"tidal_available"`
-		QobuzAvailable  bool `json:"qobuz_available"`
-		AmazonAvailable bool `json:"amazon_available"`
+		Tidal  bool `json:"tidal"`
+		Qobuz  bool `json:"qobuz"`
+		Amazon bool `json:"amazon"`
 	}
 	if err := json.Unmarshal([]byte(availResult), &availability); err != nil {
 		b.editMessage(chatID, statusMsg.MessageID, "❌ Failed to check availability")
@@ -816,26 +846,26 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 	service := ""
 	if provider == ProviderAuto {
 		// Auto: try in order of preference
-		if availability.TidalAvailable {
+		if availability.Tidal {
 			service = ProviderTidal
-		} else if availability.QobuzAvailable {
+		} else if availability.Qobuz {
 			service = ProviderQobuz
-		} else if availability.AmazonAvailable {
+		} else if availability.Amazon {
 			service = ProviderAmazon
 		}
 	} else {
 		// User selected specific provider
 		switch provider {
 		case ProviderTidal:
-			if availability.TidalAvailable {
+			if availability.Tidal {
 				service = ProviderTidal
 			}
 		case ProviderQobuz:
-			if availability.QobuzAvailable {
+			if availability.Qobuz {
 				service = ProviderQobuz
 			}
 		case ProviderAmazon:
-			if availability.AmazonAvailable {
+			if availability.Amazon {
 				service = ProviderAmazon
 			}
 		}
@@ -845,11 +875,11 @@ func (b *Bot) downloadTrack(chatID int64, trackID string) {
 		// If selected provider not available, try others
 		if provider != ProviderAuto {
 			b.editMessage(chatID, statusMsg.MessageID, fmt.Sprintf("❌ Track not available on %s. Trying other providers...", getProviderName(provider)))
-			if availability.TidalAvailable {
+			if availability.Tidal {
 				service = ProviderTidal
-			} else if availability.QobuzAvailable {
+			} else if availability.Qobuz {
 				service = ProviderQobuz
-			} else if availability.AmazonAvailable {
+			} else if availability.Amazon {
 				service = ProviderAmazon
 			}
 		}
