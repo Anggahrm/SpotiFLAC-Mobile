@@ -1728,12 +1728,44 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 	// Check if file was saved as M4A (DASH stream) instead of FLAC
 	// downloadFromManifest saves DASH streams as .m4a (m4aPath already defined above)
 	actualOutputPath := outputPath
-	if _, err := os.Stat(m4aPath); err == nil {
-		// File was saved as M4A, use that path
+
+	// Check both M4A and FLAC paths
+	m4aExists := false
+	flacExists := false
+
+	if fileInfo, statErr := os.Stat(m4aPath); statErr == nil && fileInfo.Size() > 0 {
+		m4aExists = true
+		GoLog("[Tidal] M4A file found: %s (%d bytes)\n", m4aPath, fileInfo.Size())
+	}
+	if fileInfo, statErr := os.Stat(outputPath); statErr == nil && fileInfo.Size() > 0 {
+		flacExists = true
+		GoLog("[Tidal] FLAC file found: %s (%d bytes)\n", outputPath, fileInfo.Size())
+	}
+
+	// Prefer M4A if it exists (DASH format), otherwise use FLAC
+	if m4aExists {
 		actualOutputPath = m4aPath
-		GoLog("[Tidal] File saved as M4A (DASH stream): %s\n", actualOutputPath)
-	} else if _, err := os.Stat(outputPath); err != nil {
-		// Neither FLAC nor M4A exists
+		GoLog("[Tidal] Using M4A file (DASH stream): %s\n", actualOutputPath)
+	} else if flacExists {
+		GoLog("[Tidal] Using FLAC file: %s\n", actualOutputPath)
+	} else {
+		// Neither file exists - this is an error
+		GoLog("[Tidal] ERROR: Neither M4A nor FLAC file found!\n")
+		GoLog("[Tidal] Expected M4A at: %s\n", m4aPath)
+		GoLog("[Tidal] Expected FLAC at: %s\n", outputPath)
+
+		// List directory contents for debugging
+		if entries, dirErr := os.ReadDir(req.OutputDir); dirErr == nil {
+			GoLog("[Tidal] Directory contents of %s:\n", req.OutputDir)
+			for _, entry := range entries {
+				if info, infoErr := entry.Info(); infoErr == nil && info != nil {
+					GoLog("[Tidal]   - %s (%d bytes)\n", entry.Name(), info.Size())
+				} else {
+					GoLog("[Tidal]   - %s (could not get size)\n", entry.Name())
+				}
+			}
+		}
+
 		return TidalDownloadResult{}, fmt.Errorf("download completed but file not found at %s or %s", outputPath, m4aPath)
 	}
 

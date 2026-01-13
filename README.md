@@ -1,41 +1,50 @@
 # SpotiFLAC Bot
 
-A Telegram bot and REST API for downloading high-quality FLAC music from Tidal, Qobuz, and Amazon Music using Spotify or Deezer links.
+A Telegram bot and REST API for downloading high-quality FLAC/M4A music from Tidal, Qobuz, and Amazon Music using Spotify or Deezer links.
 
 ## Features
 
-### 🎛 Quality Selection
-- **FLAC Lossless** (16-bit/44.1kHz)
-- **Hi-Res FLAC** (24-bit/96kHz)
-- **Hi-Res FLAC Max** (24-bit/192kHz)
+### Audio Quality
+- Always downloads the **highest quality** available from each provider
+- **Tidal**: Up to 24-bit/192kHz (Hi-Res FLAC or ALAC/M4A for DASH streams)
+- **Qobuz**: Up to 24-bit/192kHz FLAC
+- **Amazon Music**: Up to 24-bit/192kHz FLAC
 
-### 📦 Provider Selection
-- 🔷 **Tidal**
-- 🟣 **Qobuz**
-- 🟠 **Amazon Music**
-- 🔄 **Auto** (tries all providers)
+### Provider Selection
+- **Tidal** - Primary source
+- **Qobuz** - High-quality alternative
+- **Amazon Music** - Fallback option
+- **Auto** - Tries all providers in order
 
-### 🎤 Lyrics Support
-- Synced lyrics embedding
-- Toggle on/off per user
-
-### 🔍 Search & Download
+### Additional Features
+- Lyrics always embedded when available
 - Search by track name/artist
 - Direct Spotify/Deezer URL support
 - Album browsing
 - Inline query support
 
+### Note on File Formats
+- **Qobuz & Amazon**: Files are downloaded as `.flac`
+- **Tidal**: May be `.flac` (BTS format) or `.m4a` (DASH streams)
+  - DASH streams contain ALAC audio in M4A container
+  - Quality is equivalent - only the container differs
+  - Telegram supports both formats natively
+
 ## Telegram Bot Commands
 
 | Command | Description |
 |---------|-------------|
-| `/start` | Start the bot |
-| `/help` | Show help |
+| `/start` | Start the bot and see welcome message |
+| `/help` | Show available commands |
 | `/search <query>` | Search for tracks |
-| `/settings` | View/change settings |
-| `/quality` | Change audio quality |
 | `/provider` | Select download provider |
-| `/lyrics` | Toggle lyrics embedding |
+
+## Usage
+
+1. Send a Spotify or Deezer URL directly to the bot
+2. Or use `/search` to find tracks
+3. Click on a track to download
+4. File will be sent when download completes
 
 ## Deployment
 
