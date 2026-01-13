@@ -16,40 +16,12 @@ referensi/
 # Documentation (hosted separately)
 docs/
 
-# Old spotiflac_android folder (moved to root)
-spotiflac_android/
+# Go binaries
+spotiflac-bot
+*.exe
 
-# Flutter/Dart
-.dart_tool/
-.packages
-build/
-*.lock
-!pubspec.lock
-.flutter-plugins
-.flutter-plugins-dependencies
-.metadata
-*.apk
+# Environment files
+.env
 
-# Go backend build artifacts
-go_backend/*.aar
-go_backend/*.jar
-go_backend/*.exe
-go_backend/*.xcframework/
-
-# Android
-android/.gradle/
-android/app/libs/gobackend.aar
-android/local.properties
-android/*.iml
-android/key.properties
-android/*.jks
-android/*.keystore
-android/app/*.jks
-
-# iOS
-ios/Frameworks/
-ios/Pods/
-ios/.symlinks/
-ios/Flutter/Flutter.framework/
-ios/Flutter/Flutter.podspec
-android/app/libs/gobackend-sources.jar
+# Download directory
+downloads/

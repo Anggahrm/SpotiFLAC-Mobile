@@ -1,63 +1,121 @@
-[![GitHub All Releases](https://img.shields.io/github/downloads/zarzet/SpotiFLAC-Mobile/total?style=for-the-badge)](https://github.com/zarzet/SpotiFLAC-Mobile/releases)
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-Safe-brightgreen?style=for-the-badge&logo=virustotal)](https://www.virustotal.com/gui/file/09c6260e9ebaf2ff0d15f30deda939642f41887f11aad602ac697cb37fa0308c/)
+# SpotiFLAC Bot
 
-<div align="center">
+A Telegram bot and REST API for downloading high-quality FLAC music from Tidal, Qobuz, and Amazon Music using Spotify or Deezer links.
 
-<img src="icon.png" width="128" />
+## Features
 
-Get Spotify tracks in true FLAC from Tidal, Qobuz & Amazon Music — no account required.
+### 🎛 Quality Selection
+- **FLAC Lossless** (16-bit/44.1kHz)
+- **Hi-Res FLAC** (24-bit/96kHz)
+- **Hi-Res FLAC Max** (24-bit/192kHz)
 
-![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white)
-![iOS](https://img.shields.io/badge/iOS-14.0%2B-000000?style=for-the-badge&logo=apple&logoColor=white)
+### 📦 Provider Selection
+- 🔷 **Tidal**
+- 🟣 **Qobuz**
+- 🟠 **Amazon Music**
+- 🔄 **Auto** (tries all providers)
 
-</div>
+### 🎤 Lyrics Support
+- Synced lyrics embedding
+- Toggle on/off per user
 
-### [Download](https://github.com/zarzet/SpotiFLAC-Mobile/releases)
+### 🔍 Search & Download
+- Search by track name/artist
+- Direct Spotify/Deezer URL support
+- Album browsing
+- Inline query support
 
-## Screenshots
+## Commands
 
-<p align="center">
-  <img src="assets/images/1.jpg?v=2" width="200" />
-  <img src="assets/images/2.jpg?v=2" width="200" />
-  <img src="assets/images/3.jpg?v=2" width="200" />
-  <img src="assets/images/4.jpg?v=2" width="200" />
-</p>
+| Command | Description |
+|---------|-------------|
+| `/start` | Start the bot |
+| `/help` | Show help |
+| `/search <query>` | Search for tracks |
+| `/settings` | View/change settings |
+| `/quality` | Change audio quality |
+| `/provider` | Select download provider |
+| `/lyrics` | Toggle lyrics embedding |
 
-## Metadata Source
+## Deployment
 
-SpotiFLAC supports two metadata sources for searching tracks:
+### Environment Variables
 
-| Source | Pros | Cons |
-|--------|------|------|
-| **Deezer** (Default) | No developer account needed, rate limit per user IP | Slightly less comprehensive catalog |
-| **Spotify** | More comprehensive catalog, better search results | Requires developer API credentials to avoid rate limiting |
+```bash
+TELEGRAM_BOT_TOKEN=your_bot_token    # Required
+PORT=8080                             # API port (Heroku sets this)
+DOWNLOAD_DIR=/tmp/downloads           # Temporary download directory
+SPOTIFY_CLIENT_ID=                    # Optional
+SPOTIFY_CLIENT_SECRET=                # Optional
+DEBUG=false                           # Enable debug mode
+```
 
-### Using Spotify
-To use Spotify as your search source without hitting rate limits:
-1. Create a Spotify Developer account at [developer.spotify.com](https://developer.spotify.com)
-2. Create an app to get your Client ID and Client Secret
-3. Go to **Settings > Options > Spotify API > Change from Deezer to Spotify > Input Custom Credentials**
-4. Enter your Client ID and Secret
-5. Change **Search Source** to Spotify
+### Deploy to Heroku
 
-## Other project
+1. Create a new Heroku app:
+```bash
+heroku create your-app-name
+```
 
-### [SpotiFLAC (Desktop)](https://github.com/afkarxyz/SpotiFLAC)
-Get Spotify tracks in true FLAC from Tidal, Qobuz & Amazon Music for Windows, macOS & Linux
+2. Set the bot token:
+```bash
+heroku config:set TELEGRAM_BOT_TOKEN=your_token
+```
 
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Me-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/zarzet)
+3. Deploy:
+```bash
+git push heroku main
+```
+
+### Run Locally
+
+```bash
+# Set environment variables
+export TELEGRAM_BOT_TOKEN="your_token"
+
+# Build and run
+go build -o spotiflac-bot .
+./spotiflac-bot
+```
+
+### Docker
+
+```bash
+docker build -t spotiflac-bot .
+docker run -e TELEGRAM_BOT_TOKEN="your_token" -p 8080:8080 spotiflac-bot
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/api/search` | GET | Search tracks |
+| `/api/metadata` | GET | Get track metadata |
+| `/api/availability` | GET | Check provider availability |
+| `/api/download` | POST | Download a track |
+| `/api/progress` | GET | Get download progress |
+| `/api/lyrics` | GET | Fetch lyrics |
+
+## Project Structure
+
+```
+.
+├── main.go              # Entry point
+├── Procfile             # Heroku process file
+├── go.mod               # Go module
+├── pkg/
+│   ├── api/             # REST API server
+│   ├── bot/             # Telegram bot
+│   ├── backend/         # Download core
+│   └── config/          # Configuration
+└── README.md
+```
+
+## License
+
+MIT License - See [LICENSE](LICENSE) file.
 
 ## Disclaimer
 
-> **iOS Support**: This app is primarily tested on Android. iOS support is experimental and may have bugs — the developer is too poor to afford an iPhone for proper testing. If you encounter issues on iOS, please report them!
-
-This project is for **educational and private use only**. The developer does not condone or encourage copyright infringement.
-
-**SpotiFLAC** is a third-party tool and is not affiliated with, endorsed by, or connected to Spotify, Tidal, Qobuz, Amazon Music, or any other streaming service.
-
-You are solely responsible for:
-1. Ensuring your use of this software complies with your local laws.
-2. Reading and adhering to the Terms of Service of the respective platforms.
-3. Any legal consequences resulting from the misuse of this tool.
-
-The software is provided "as is", without warranty of any kind. The author assumes no liability for any bans, damages, or legal issues arising from its use.
+This project is for **educational and personal use only**. Users are responsible for ensuring their use complies with applicable laws and terms of service.
