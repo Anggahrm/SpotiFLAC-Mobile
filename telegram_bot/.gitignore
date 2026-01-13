@@ -1,0 +1,18 @@
+# Binaries
+spotiflac_telegram
+spotiflac-bot
+*.exe
+
+# Environment files
+.env
+
+# Download directory
+downloads/
+
+# IDE
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
