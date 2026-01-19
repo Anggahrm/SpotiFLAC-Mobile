@@ -255,17 +255,24 @@ func (b *Bot) handleMessage(message *tgbotapi.Message) {
 
 func (b *Bot) performSearch(chatID int64, query string) {
 	// Send "searching" status
-	statusMsg, _ := b.sendMessage(chatID, "Searching...")
+	statusMsg, _ := b.sendMessage(chatID, "Searching Spotify...")
 
-	result, err := backend.SearchDeezerAll(query, 5, 0)
+	// Try Spotify Web search first
+	result, err := backend.SearchSpotifyWeb(query, 10)
 	if err != nil {
-		b.editMessage(chatID, statusMsg.MessageID, "Search failed: "+err.Error())
-		return
+		// Fallback to Deezer if Spotify Web fails
+		b.editMessage(chatID, statusMsg.MessageID, "Spotify failed, trying Deezer...")
+		result, err = backend.SearchDeezerAll(query, 5, 0)
+		if err != nil {
+			b.editMessage(chatID, statusMsg.MessageID, "Search failed: "+err.Error())
+			return
+		}
 	}
 
 	var searchResult struct {
 		Tracks []struct {
 			SpotifyID   string `json:"spotify_id"`
+			ID          string `json:"id"`
 			Artists     string `json:"artists"`
 			Name        string `json:"name"`
 			AlbumName   string `json:"album_name"`
@@ -274,6 +281,7 @@ func (b *Bot) performSearch(chatID int64, query string) {
 			ISRC        string `json:"isrc"`
 			ReleaseDate string `json:"release_date"`
 			TrackNumber int    `json:"track_number"`
+			ItemType    string `json:"item_type"`
 		} `json:"tracks"`
 	}
 
@@ -288,26 +296,47 @@ func (b *Bot) performSearch(chatID int64, query string) {
 	}
 
 	// Build response with inline keyboard
-	text := "Search Results\n\n"
+	text := "Spotify Search Results\n\n"
 	var buttons [][]tgbotapi.InlineKeyboardButton
 
-	for i, track := range searchResult.Tracks {
+	trackCount := 0
+	for _, track := range searchResult.Tracks {
+		// Only show tracks (not albums/artists/playlists)
+		if track.ItemType != "" && track.ItemType != "track" {
+			continue
+		}
+		trackCount++
+		if trackCount > 8 {
+			break
+		}
+
 		duration := formatDuration(track.DurationMS)
 		text += fmt.Sprintf("%d. %s - %s\n   %s | %s\n\n",
-			i+1, track.Name, track.Artists,
+			trackCount, track.Name, track.Artists,
 			track.AlbumName, duration)
 
+		// Use SpotifyID or ID
+		trackID := track.SpotifyID
+		if trackID == "" {
+			trackID = track.ID
+		}
+
 		// Create download button for each track
-		callbackData := fmt.Sprintf("dl:%s", track.SpotifyID)
+		callbackData := fmt.Sprintf("dl:%s", trackID)
 		if len(callbackData) > 64 {
 			callbackData = callbackData[:64]
 		}
 		buttons = append(buttons, []tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardButtonData(
-				fmt.Sprintf("%d. %s", i+1, truncateString(track.Name, 35)),
+				fmt.Sprintf("%d. %s", trackCount, truncateString(track.Name, 35)),
 				callbackData,
 			),
 		})
+	}
+
+	if trackCount == 0 {
+		b.editMessage(chatID, statusMsg.MessageID, "No tracks found for: "+query)
+		return
 	}
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(buttons...)
@@ -564,7 +593,192 @@ func (b *Bot) handleAlbumURL(chatID int64, statusMsgID int, url string) {
 }
 
 func (b *Bot) handlePlaylistURL(chatID int64, statusMsgID int, url string) {
-	b.editMessage(chatID, statusMsgID, "Playlist support coming soon. Please share individual track URLs.")
+	b.editMessage(chatID, statusMsgID, "📋 Fetching playlist...")
+
+	// Fetch playlist using existing Spotify API with fallback
+	playlistJSON, err := backend.GetSpotifyMetadataWithDeezerFallback(url)
+	if err != nil {
+		// Try Spotify Web API as fallback
+		parseResult, parseErr := backend.ParseSpotifyURL(url)
+		if parseErr == nil {
+			var parsed struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+			}
+			if json.Unmarshal([]byte(parseResult), &parsed) == nil {
+				playlistJSON, err = backend.GetSpotifyWebPlaylist(parsed.ID)
+			}
+		}
+		if err != nil {
+			b.editMessage(chatID, statusMsgID, "❌ Failed to fetch playlist: "+err.Error())
+			return
+		}
+	}
+
+	// Parse the response - handle both formats
+	var playlistInfo struct {
+		Name        string `json:"name"`
+		Owner       string `json:"owner"`
+		TotalTracks int    `json:"total_tracks"`
+	}
+	var tracks []struct {
+		SpotifyID  string `json:"spotify_id"`
+		Name       string `json:"name"`
+		Artists    string `json:"artists"`
+		DurationMS int    `json:"duration_ms"`
+	}
+
+	// Try new format first (playlist_info + tracks)
+	var newFormat struct {
+		PlaylistInfo struct {
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Owner       string `json:"owner"`
+			Images      string `json:"images"`
+			TotalTracks int    `json:"total_tracks"`
+		} `json:"playlist_info"`
+		Tracks []struct {
+			ID         string `json:"id"`
+			SpotifyID  string `json:"spotify_id"`
+			Name       string `json:"name"`
+			Artists    string `json:"artists"`
+			AlbumName  string `json:"album_name"`
+			DurationMS int    `json:"duration_ms"`
+		} `json:"tracks"`
+	}
+
+	if err := json.Unmarshal([]byte(playlistJSON), &newFormat); err == nil && newFormat.PlaylistInfo.Name != "" {
+		playlistInfo.Name = newFormat.PlaylistInfo.Name
+		playlistInfo.Owner = newFormat.PlaylistInfo.Owner
+		playlistInfo.TotalTracks = newFormat.PlaylistInfo.TotalTracks
+		for _, t := range newFormat.Tracks {
+			trackID := t.SpotifyID
+			if trackID == "" {
+				trackID = t.ID
+			}
+			tracks = append(tracks, struct {
+				SpotifyID  string `json:"spotify_id"`
+				Name       string `json:"name"`
+				Artists    string `json:"artists"`
+				DurationMS int    `json:"duration_ms"`
+			}{
+				SpotifyID:  trackID,
+				Name:       t.Name,
+				Artists:    t.Artists,
+				DurationMS: t.DurationMS,
+			})
+		}
+	} else {
+		// Try old format (from GetSpotifyMetadata)
+		var oldFormat struct {
+			PlaylistInfo struct {
+				Tracks struct {
+					Total int `json:"total"`
+				} `json:"tracks"`
+				Owner struct {
+					DisplayName string `json:"display_name"`
+					Name        string `json:"name"`
+				} `json:"owner"`
+			} `json:"playlist_info"`
+			Tracks []struct {
+				SpotifyID  string `json:"spotify_id"`
+				Name       string `json:"name"`
+				Artists    string `json:"artists"`
+				DurationMS int    `json:"duration_ms"`
+			} `json:"tracks"`
+		}
+		if err := json.Unmarshal([]byte(playlistJSON), &oldFormat); err != nil {
+			b.editMessage(chatID, statusMsgID, "❌ Failed to parse playlist data")
+			return
+		}
+		playlistInfo.Name = oldFormat.PlaylistInfo.Owner.Name
+		playlistInfo.Owner = oldFormat.PlaylistInfo.Owner.DisplayName
+		playlistInfo.TotalTracks = oldFormat.PlaylistInfo.Tracks.Total
+		tracks = oldFormat.Tracks
+	}
+
+	if len(tracks) == 0 {
+		b.editMessage(chatID, statusMsgID, "❌ No tracks found in playlist")
+		return
+	}
+
+	// Build response message
+	text := fmt.Sprintf("📋 *%s*\n", escapeMarkdown(playlistInfo.Name))
+	if playlistInfo.Owner != "" {
+		text += fmt.Sprintf("👤 By: %s\n", escapeMarkdown(playlistInfo.Owner))
+	}
+	totalTracks := playlistInfo.TotalTracks
+	if totalTracks == 0 {
+		totalTracks = len(tracks)
+	}
+	text += fmt.Sprintf("🎵 %d tracks\n\n", totalTracks)
+
+	// Show first 10 tracks
+	maxTracks := 10
+	if len(tracks) < maxTracks {
+		maxTracks = len(tracks)
+	}
+
+	for i := 0; i < maxTracks; i++ {
+		track := tracks[i]
+		duration := formatDuration(track.DurationMS)
+		text += fmt.Sprintf("%d. %s - %s (%s)\n",
+			i+1,
+			escapeMarkdown(track.Name),
+			escapeMarkdown(track.Artists),
+			duration,
+		)
+	}
+
+	if len(tracks) > maxTracks {
+		text += fmt.Sprintf("\n...and %d more tracks", len(tracks)-maxTracks)
+	}
+
+	// Create inline keyboard with track buttons
+	var buttons [][]tgbotapi.InlineKeyboardButton
+
+	// Add download buttons for first 8 tracks (max buttons limit)
+	maxButtons := 8
+	if len(tracks) < maxButtons {
+		maxButtons = len(tracks)
+	}
+
+	for i := 0; i < maxButtons; i++ {
+		track := tracks[i]
+		buttonText := fmt.Sprintf("⬇️ %d. %s", i+1, truncateString(track.Name, 25))
+		buttons = append(buttons, []tgbotapi.InlineKeyboardButton{
+			tgbotapi.NewInlineKeyboardButtonData(buttonText, "dl:"+track.SpotifyID),
+		})
+	}
+
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(buttons...)
+
+	// Edit message with playlist info
+	editMsg := tgbotapi.NewEditMessageText(chatID, statusMsgID, text)
+	editMsg.ParseMode = "Markdown"
+	editMsg.ReplyMarkup = &keyboard
+	b.api.Send(editMsg)
+}
+
+// truncateString truncates a string to maxLen and adds ellipsis
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// escapeMarkdown escapes special characters for Telegram Markdown
+func escapeMarkdown(s string) string {
+	replacer := strings.NewReplacer(
+		"_", "\\_",
+		"*", "\\*",
+		"[", "\\[",
+		"]", "\\]",
+		"`", "\\`",
+	)
+	return replacer.Replace(s)
 }
 
 // canPerformAction checks if user can perform an action (rate limiting)
@@ -896,19 +1110,26 @@ func (b *Bot) handleInlineQuery(query *tgbotapi.InlineQuery) {
 		return
 	}
 
-	result, err := backend.SearchDeezerAll(query.Query, 10, 0)
+	// Try Spotify Web search first
+	result, err := backend.SearchSpotifyWeb(query.Query, 10)
 	if err != nil {
-		return
+		// Fallback to Deezer
+		result, err = backend.SearchDeezerAll(query.Query, 10, 0)
+		if err != nil {
+			return
+		}
 	}
 
 	var searchResult struct {
 		Tracks []struct {
 			SpotifyID  string `json:"spotify_id"`
+			ID         string `json:"id"`
 			Artists    string `json:"artists"`
 			Name       string `json:"name"`
 			AlbumName  string `json:"album_name"`
 			DurationMS int    `json:"duration_ms"`
 			Images     string `json:"images"`
+			ItemType   string `json:"item_type"`
 		} `json:"tracks"`
 	}
 
@@ -918,7 +1139,17 @@ func (b *Bot) handleInlineQuery(query *tgbotapi.InlineQuery) {
 
 	var results []interface{}
 	for i, track := range searchResult.Tracks {
-		resultID := fmt.Sprintf("%d_%s", i, track.SpotifyID)
+		// Only show tracks
+		if track.ItemType != "" && track.ItemType != "track" {
+			continue
+		}
+
+		trackID := track.SpotifyID
+		if trackID == "" {
+			trackID = track.ID
+		}
+
+		resultID := fmt.Sprintf("%d_%s", i, trackID)
 
 		text := fmt.Sprintf("%s - %s\nAlbum: %s\nDuration: %s",
 			track.Name,
@@ -975,13 +1206,6 @@ func formatDuration(ms int) string {
 	minutes := seconds / 60
 	seconds = seconds % 60
 	return fmt.Sprintf("%d:%02d", minutes, seconds)
-}
-
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
 }
 
 func capitalizeFirst(s string) string {
