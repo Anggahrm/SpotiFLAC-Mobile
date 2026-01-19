@@ -442,13 +442,13 @@ func (b *Bot) handleTrackURL(chatID int64, statusMsgID int, url string, resource
 	} else {
 		availResult, availErr = backend.CheckAvailability(track.SpotifyID, track.ISRC)
 	}
-	
+
 	var availability struct {
 		Tidal  bool `json:"tidal"`
 		Qobuz  bool `json:"qobuz"`
 		Amazon bool `json:"amazon"`
 	}
-	
+
 	// Only parse if we got a valid result
 	if availErr == nil && availResult != "" {
 		json.Unmarshal([]byte(availResult), &availability)
@@ -754,29 +754,76 @@ func (b *Bot) downloadBatch(chatID int64, messageID int, batchKey string) {
 
 	total := len(trackIDs)
 	success := 0
-	failed := 0
+	type failedTrack struct {
+		name string
+		id   string
+	}
+	var failedTracks []failedTrack
 
 	for i, trackID := range trackIDs {
 		// Update progress
-		progress := fmt.Sprintf("Downloading %d/%d...", i+1, total)
+		progress := fmt.Sprintf("Downloading %d/%d\nSuccess: %d | Failed: %d", i+1, total, success, len(failedTracks))
 		b.editMessage(chatID, messageID, progress)
 
-		// Download track silently (no individual messages)
-		err := b.downloadTrackSilent(chatID, trackID)
+		// Download track silently
+		trackName, err := b.downloadTrackSilent(chatID, trackID)
 		if err != nil {
-			failed++
+			name := trackName
+			if name == "" {
+				name = trackID
+			}
+			failedTracks = append(failedTracks, failedTrack{name: name, id: trackID})
 		} else {
 			success++
 		}
 	}
 
+	// Retry failed tracks once
+	if len(failedTracks) > 0 {
+		b.editMessage(chatID, messageID, fmt.Sprintf("Retrying %d failed tracks...", len(failedTracks)))
+
+		var stillFailed []failedTrack
+		for _, ft := range failedTracks {
+			trackName, err := b.downloadTrackSilent(chatID, ft.id)
+			if err != nil {
+				name := ft.name
+				if trackName != "" {
+					name = trackName
+				}
+				stillFailed = append(stillFailed, failedTrack{name: name, id: ft.id})
+			} else {
+				success++
+			}
+		}
+		failedTracks = stillFailed
+	}
+
 	// Final summary
-	summary := fmt.Sprintf("Download complete\n\nSuccess: %d\nFailed: %d\nTotal: %d", success, failed, total)
+	summary := fmt.Sprintf("Download complete\n\nSuccess: %d/%d", success, total)
+
+	if len(failedTracks) > 0 {
+		summary += fmt.Sprintf("\nFailed: %d", len(failedTracks))
+		summary += "\n\nFailed tracks:"
+		maxShow := 10
+		for i, ft := range failedTracks {
+			if i >= maxShow {
+				summary += fmt.Sprintf("\n...and %d more", len(failedTracks)-maxShow)
+				break
+			}
+			// Truncate long names
+			name := ft.name
+			if len(name) > 30 {
+				name = name[:27] + "..."
+			}
+			summary += fmt.Sprintf("\n- %s", name)
+		}
+	}
+
 	b.editMessage(chatID, messageID, summary)
 }
 
-// downloadTrackSilent downloads a track and sends the file, returns error
-func (b *Bot) downloadTrackSilent(chatID int64, trackID string) error {
+// downloadTrackSilent downloads a track and sends the file, returns (trackName, error)
+func (b *Bot) downloadTrackSilent(chatID int64, trackID string) (string, error) {
 	// Get track metadata
 	var metadataResult string
 	var err error
@@ -790,7 +837,7 @@ func (b *Bot) downloadTrackSilent(chatID int64, trackID string) error {
 	}
 
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	var trackData struct {
@@ -811,12 +858,17 @@ func (b *Bot) downloadTrackSilent(chatID int64, trackID string) error {
 	}
 
 	if err := json.Unmarshal([]byte(metadataResult), &trackData); err != nil {
-		return fmt.Errorf("parse metadata: %w", err)
+		return "", fmt.Errorf("parse metadata: %w", err)
 	}
 
 	track := trackData.Track
+	trackName := track.Name
+	if track.Artists != "" {
+		trackName = track.Name + " - " + track.Artists
+	}
+
 	if track.ISRC == "" && track.SpotifyID == "" {
-		return fmt.Errorf("no ISRC or SpotifyID")
+		return trackName, fmt.Errorf("no ISRC or SpotifyID")
 	}
 
 	// Check availability
@@ -831,7 +883,7 @@ func (b *Bot) downloadTrackSilent(chatID int64, trackID string) error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("availability: %w", err)
+		return trackName, fmt.Errorf("availability: %w", err)
 	}
 
 	var availability struct {
@@ -840,7 +892,7 @@ func (b *Bot) downloadTrackSilent(chatID int64, trackID string) error {
 		Amazon bool `json:"amazon"`
 	}
 	if err := json.Unmarshal([]byte(availResult), &availability); err != nil {
-		return fmt.Errorf("parse availability: %w", err)
+		return trackName, fmt.Errorf("parse availability: %w", err)
 	}
 
 	// Determine service
@@ -882,7 +934,7 @@ func (b *Bot) downloadTrackSilent(chatID int64, trackID string) error {
 	}
 
 	if service == "" {
-		return fmt.Errorf("not available")
+		return trackName, fmt.Errorf("not available")
 	}
 
 	// Prepare download request
@@ -915,7 +967,7 @@ func (b *Bot) downloadTrackSilent(chatID int64, trackID string) error {
 	var result string
 	result, err = backend.DownloadWithFallback(string(reqJSON))
 	if err != nil {
-		return fmt.Errorf("download: %w", err)
+		return trackName, fmt.Errorf("download: %w", err)
 	}
 
 	var downloadResult struct {
@@ -928,11 +980,11 @@ func (b *Bot) downloadTrackSilent(chatID int64, trackID string) error {
 	}
 
 	if err := json.Unmarshal([]byte(result), &downloadResult); err != nil {
-		return fmt.Errorf("parse result: %w", err)
+		return trackName, fmt.Errorf("parse result: %w", err)
 	}
 
 	if !downloadResult.Success {
-		return fmt.Errorf(downloadResult.Error)
+		return trackName, fmt.Errorf(downloadResult.Error)
 	}
 
 	// Upload to Telegram
@@ -942,7 +994,7 @@ func (b *Bot) downloadTrackSilent(chatID int64, trackID string) error {
 	// Clean up
 	os.Remove(downloadResult.FilePath)
 
-	return err
+	return trackName, err
 }
 
 func (b *Bot) handleCallbackQuery(callback *tgbotapi.CallbackQuery) {
