@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,7 +33,9 @@ type Bot struct {
 	// Rate limiting for button clicks
 	lastAction     map[int64]time.Time
 	activeDownload map[int64]bool
-	mu             sync.RWMutex
+	// Batch download storage: chatID -> batchKey -> []trackIDs
+	batchTracks map[int64]map[string][]string
+	mu          sync.RWMutex
 }
 
 // NewBot creates a new Telegram bot
@@ -64,6 +67,7 @@ func NewBot(cfg *config.Config) (*Bot, error) {
 		userProvider:   make(map[int64]string),
 		lastAction:     make(map[int64]time.Time),
 		activeDownload: make(map[int64]bool),
+		batchTracks:    make(map[int64]map[string][]string),
 	}, nil
 }
 
@@ -523,15 +527,10 @@ func (b *Bot) handleAlbumURL(chatID int64, statusMsgID int, url string) {
 			Name        string `json:"name"`
 			ReleaseDate string `json:"release_date"`
 			Artists     string `json:"artists"`
-			Images      string `json:"images"`
 		} `json:"album_info"`
 		TrackList []struct {
-			SpotifyID   string `json:"spotify_id"`
-			Artists     string `json:"artists"`
-			Name        string `json:"name"`
-			DurationMS  int    `json:"duration_ms"`
-			TrackNumber int    `json:"track_number"`
-			ISRC        string `json:"isrc"`
+			SpotifyID string `json:"spotify_id"`
+			ID        string `json:"id"`
 		} `json:"track_list"`
 	}
 
@@ -540,60 +539,55 @@ func (b *Bot) handleAlbumURL(chatID int64, statusMsgID int, url string) {
 		return
 	}
 
-	// Show album info
-	text := fmt.Sprintf("%s - %s\nRelease: %s\nTracks: %d\n\n",
-		albumData.AlbumInfo.Name,
-		albumData.AlbumInfo.Artists,
-		albumData.AlbumInfo.ReleaseDate,
-		albumData.AlbumInfo.TotalTracks)
-
-	// List first 10 tracks
-	maxTracks := 10
-	if len(albumData.TrackList) < maxTracks {
-		maxTracks = len(albumData.TrackList)
-	}
-
-	for i := 0; i < maxTracks; i++ {
-		track := albumData.TrackList[i]
-		text += fmt.Sprintf("%d. %s (%s)\n",
-			track.TrackNumber,
-			track.Name,
-			formatDuration(track.DurationMS))
-	}
-
-	if len(albumData.TrackList) > maxTracks {
-		text += fmt.Sprintf("\n...and %d more tracks\n", len(albumData.TrackList)-maxTracks)
-	}
-
-	text += "\nSelect a track to download:"
-
-	// Create download buttons for individual tracks (first 5)
-	var buttons [][]tgbotapi.InlineKeyboardButton
-	for i := 0; i < 5 && i < len(albumData.TrackList); i++ {
-		track := albumData.TrackList[i]
-		callbackData := fmt.Sprintf("dl:%s", track.SpotifyID)
-		if len(callbackData) > 64 {
-			callbackData = callbackData[:64]
+	// Collect track IDs
+	var trackIDs []string
+	for _, t := range albumData.TrackList {
+		id := t.SpotifyID
+		if id == "" {
+			id = t.ID
 		}
-		buttons = append(buttons, []tgbotapi.InlineKeyboardButton{
-			tgbotapi.NewInlineKeyboardButtonData(
-				fmt.Sprintf("%d. %s", track.TrackNumber, truncateString(track.Name, 30)),
-				callbackData,
-			),
-		})
+		if id != "" {
+			trackIDs = append(trackIDs, id)
+		}
 	}
 
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(buttons...)
+	if len(trackIDs) == 0 {
+		b.editMessage(chatID, statusMsgID, "No tracks found in album")
+		return
+	}
 
-	b.api.Request(tgbotapi.NewDeleteMessage(chatID, statusMsgID))
+	// Generate album ID from URL or use hash
+	albumID := fmt.Sprintf("%x", md5.Sum([]byte(url)))[:16]
 
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ReplyMarkup = keyboard
-	b.api.Send(msg)
+	// Store track IDs for batch download
+	b.storeBatchTracks(chatID, "album", albumID, trackIDs)
+
+	// Simple display
+	text := fmt.Sprintf("*%s*\n", escapeMarkdown(albumData.AlbumInfo.Name))
+	text += fmt.Sprintf("by %s\n", escapeMarkdown(albumData.AlbumInfo.Artists))
+	if albumData.AlbumInfo.ReleaseDate != "" {
+		text += fmt.Sprintf("%s\n", albumData.AlbumInfo.ReleaseDate)
+	}
+	text += fmt.Sprintf("\n%d tracks", len(trackIDs))
+
+	// Single "Download All" button
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(
+				fmt.Sprintf("Download All (%d)", len(trackIDs)),
+				fmt.Sprintf("dlall:album:%s", albumID),
+			),
+		),
+	)
+
+	editMsg := tgbotapi.NewEditMessageText(chatID, statusMsgID, text)
+	editMsg.ParseMode = "Markdown"
+	editMsg.ReplyMarkup = &keyboard
+	b.api.Send(editMsg)
 }
 
 func (b *Bot) handlePlaylistURL(chatID int64, statusMsgID int, url string) {
-	b.editMessage(chatID, statusMsgID, "📋 Fetching playlist...")
+	b.editMessage(chatID, statusMsgID, "Fetching playlist...")
 
 	// Fetch playlist using existing Spotify API with fallback
 	playlistJSON, err := backend.GetSpotifyMetadataWithDeezerFallback(url)
@@ -610,151 +604,69 @@ func (b *Bot) handlePlaylistURL(chatID int64, statusMsgID int, url string) {
 			}
 		}
 		if err != nil {
-			b.editMessage(chatID, statusMsgID, "❌ Failed to fetch playlist: "+err.Error())
+			b.editMessage(chatID, statusMsgID, "Failed to fetch playlist: "+err.Error())
 			return
 		}
 	}
 
-	// Parse the response - handle both formats
-	var playlistInfo struct {
-		Name        string `json:"name"`
-		Owner       string `json:"owner"`
-		TotalTracks int    `json:"total_tracks"`
-	}
-	var tracks []struct {
-		SpotifyID  string `json:"spotify_id"`
-		Name       string `json:"name"`
-		Artists    string `json:"artists"`
-		DurationMS int    `json:"duration_ms"`
-	}
+	// Parse the response
+	var playlistName, playlistOwner, playlistID string
+	var trackIDs []string
 
 	// Try new format first (playlist_info + tracks)
 	var newFormat struct {
 		PlaylistInfo struct {
 			ID          string `json:"id"`
 			Name        string `json:"name"`
-			Description string `json:"description"`
 			Owner       string `json:"owner"`
-			Images      string `json:"images"`
 			TotalTracks int    `json:"total_tracks"`
 		} `json:"playlist_info"`
 		Tracks []struct {
-			ID         string `json:"id"`
-			SpotifyID  string `json:"spotify_id"`
-			Name       string `json:"name"`
-			Artists    string `json:"artists"`
-			AlbumName  string `json:"album_name"`
-			DurationMS int    `json:"duration_ms"`
+			ID        string `json:"id"`
+			SpotifyID string `json:"spotify_id"`
 		} `json:"tracks"`
 	}
 
 	if err := json.Unmarshal([]byte(playlistJSON), &newFormat); err == nil && newFormat.PlaylistInfo.Name != "" {
-		playlistInfo.Name = newFormat.PlaylistInfo.Name
-		playlistInfo.Owner = newFormat.PlaylistInfo.Owner
-		playlistInfo.TotalTracks = newFormat.PlaylistInfo.TotalTracks
+		playlistName = newFormat.PlaylistInfo.Name
+		playlistOwner = newFormat.PlaylistInfo.Owner
+		playlistID = newFormat.PlaylistInfo.ID
 		for _, t := range newFormat.Tracks {
-			trackID := t.SpotifyID
-			if trackID == "" {
-				trackID = t.ID
+			id := t.SpotifyID
+			if id == "" {
+				id = t.ID
 			}
-			tracks = append(tracks, struct {
-				SpotifyID  string `json:"spotify_id"`
-				Name       string `json:"name"`
-				Artists    string `json:"artists"`
-				DurationMS int    `json:"duration_ms"`
-			}{
-				SpotifyID:  trackID,
-				Name:       t.Name,
-				Artists:    t.Artists,
-				DurationMS: t.DurationMS,
-			})
+			if id != "" {
+				trackIDs = append(trackIDs, id)
+			}
 		}
-	} else {
-		// Try old format (from GetSpotifyMetadata)
-		var oldFormat struct {
-			PlaylistInfo struct {
-				Tracks struct {
-					Total int `json:"total"`
-				} `json:"tracks"`
-				Owner struct {
-					DisplayName string `json:"display_name"`
-					Name        string `json:"name"`
-				} `json:"owner"`
-			} `json:"playlist_info"`
-			Tracks []struct {
-				SpotifyID  string `json:"spotify_id"`
-				Name       string `json:"name"`
-				Artists    string `json:"artists"`
-				DurationMS int    `json:"duration_ms"`
-			} `json:"tracks"`
-		}
-		if err := json.Unmarshal([]byte(playlistJSON), &oldFormat); err != nil {
-			b.editMessage(chatID, statusMsgID, "❌ Failed to parse playlist data")
-			return
-		}
-		playlistInfo.Name = oldFormat.PlaylistInfo.Owner.Name
-		playlistInfo.Owner = oldFormat.PlaylistInfo.Owner.DisplayName
-		playlistInfo.TotalTracks = oldFormat.PlaylistInfo.Tracks.Total
-		tracks = oldFormat.Tracks
 	}
 
-	if len(tracks) == 0 {
-		b.editMessage(chatID, statusMsgID, "❌ No tracks found in playlist")
+	if len(trackIDs) == 0 {
+		b.editMessage(chatID, statusMsgID, "No tracks found in playlist")
 		return
 	}
 
-	// Build response message
-	text := fmt.Sprintf("📋 *%s*\n", escapeMarkdown(playlistInfo.Name))
-	if playlistInfo.Owner != "" {
-		text += fmt.Sprintf("👤 By: %s\n", escapeMarkdown(playlistInfo.Owner))
+	// Store track IDs for batch download
+	b.storeBatchTracks(chatID, "playlist", playlistID, trackIDs)
+
+	// Simple display: name, owner, track count, download all button
+	text := fmt.Sprintf("*%s*\n", escapeMarkdown(playlistName))
+	if playlistOwner != "" {
+		text += fmt.Sprintf("by %s\n", escapeMarkdown(playlistOwner))
 	}
-	totalTracks := playlistInfo.TotalTracks
-	if totalTracks == 0 {
-		totalTracks = len(tracks)
-	}
-	text += fmt.Sprintf("🎵 %d tracks\n\n", totalTracks)
+	text += fmt.Sprintf("\n%d tracks", len(trackIDs))
 
-	// Show first 10 tracks
-	maxTracks := 10
-	if len(tracks) < maxTracks {
-		maxTracks = len(tracks)
-	}
+	// Single "Download All" button
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(
+				fmt.Sprintf("Download All (%d)", len(trackIDs)),
+				fmt.Sprintf("dlall:playlist:%s", playlistID),
+			),
+		),
+	)
 
-	for i := 0; i < maxTracks; i++ {
-		track := tracks[i]
-		duration := formatDuration(track.DurationMS)
-		text += fmt.Sprintf("%d. %s - %s (%s)\n",
-			i+1,
-			escapeMarkdown(track.Name),
-			escapeMarkdown(track.Artists),
-			duration,
-		)
-	}
-
-	if len(tracks) > maxTracks {
-		text += fmt.Sprintf("\n...and %d more tracks", len(tracks)-maxTracks)
-	}
-
-	// Create inline keyboard with track buttons
-	var buttons [][]tgbotapi.InlineKeyboardButton
-
-	// Add download buttons for first 8 tracks (max buttons limit)
-	maxButtons := 8
-	if len(tracks) < maxButtons {
-		maxButtons = len(tracks)
-	}
-
-	for i := 0; i < maxButtons; i++ {
-		track := tracks[i]
-		buttonText := fmt.Sprintf("⬇️ %d. %s", i+1, truncateString(track.Name, 25))
-		buttons = append(buttons, []tgbotapi.InlineKeyboardButton{
-			tgbotapi.NewInlineKeyboardButtonData(buttonText, "dl:"+track.SpotifyID),
-		})
-	}
-
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(buttons...)
-
-	// Edit message with playlist info
 	editMsg := tgbotapi.NewEditMessageText(chatID, statusMsgID, text)
 	editMsg.ParseMode = "Markdown"
 	editMsg.ReplyMarkup = &keyboard
@@ -808,6 +720,231 @@ func (b *Bot) setDownloading(chatID int64, status bool) {
 	b.activeDownload[chatID] = status
 }
 
+// storeBatchTracks stores track IDs for batch download
+func (b *Bot) storeBatchTracks(chatID int64, itemType, itemID string, trackIDs []string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.batchTracks[chatID] == nil {
+		b.batchTracks[chatID] = make(map[string][]string)
+	}
+	batchKey := itemType + ":" + itemID
+	b.batchTracks[chatID][batchKey] = trackIDs
+}
+
+// getBatchTracks retrieves stored track IDs
+func (b *Bot) getBatchTracks(chatID int64, batchKey string) []string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if b.batchTracks[chatID] == nil {
+		return nil
+	}
+	return b.batchTracks[chatID][batchKey]
+}
+
+// downloadBatch downloads all tracks in a batch
+func (b *Bot) downloadBatch(chatID int64, messageID int, batchKey string) {
+	trackIDs := b.getBatchTracks(chatID, batchKey)
+	if len(trackIDs) == 0 {
+		b.editMessage(chatID, messageID, "No tracks found. Please send the URL again.")
+		return
+	}
+
+	b.setDownloading(chatID, true)
+	defer b.setDownloading(chatID, false)
+
+	total := len(trackIDs)
+	success := 0
+	failed := 0
+
+	for i, trackID := range trackIDs {
+		// Update progress
+		progress := fmt.Sprintf("Downloading %d/%d...", i+1, total)
+		b.editMessage(chatID, messageID, progress)
+
+		// Download track silently (no individual messages)
+		err := b.downloadTrackSilent(chatID, trackID)
+		if err != nil {
+			failed++
+		} else {
+			success++
+		}
+	}
+
+	// Final summary
+	summary := fmt.Sprintf("Download complete\n\nSuccess: %d\nFailed: %d\nTotal: %d", success, failed, total)
+	b.editMessage(chatID, messageID, summary)
+}
+
+// downloadTrackSilent downloads a track and sends the file, returns error
+func (b *Bot) downloadTrackSilent(chatID int64, trackID string) error {
+	// Get track metadata
+	var metadataResult string
+	var err error
+
+	if strings.HasPrefix(trackID, "deezer:") {
+		deezerID := strings.TrimPrefix(trackID, "deezer:")
+		metadataResult, err = backend.GetDeezerMetadata("track", deezerID)
+	} else {
+		spotifyURL := "https://open.spotify.com/track/" + trackID
+		metadataResult, err = backend.GetSpotifyMetadataWithDeezerFallback(spotifyURL)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	var trackData struct {
+		Track struct {
+			SpotifyID   string `json:"spotify_id"`
+			Name        string `json:"name"`
+			Artists     string `json:"artists"`
+			AlbumName   string `json:"album_name"`
+			AlbumArtist string `json:"album_artist"`
+			DurationMS  int    `json:"duration_ms"`
+			Images      string `json:"images"`
+			ReleaseDate string `json:"release_date"`
+			TrackNumber int    `json:"track_number"`
+			TotalTracks int    `json:"total_tracks"`
+			DiscNumber  int    `json:"disc_number"`
+			ISRC        string `json:"isrc"`
+		} `json:"track"`
+	}
+
+	if err := json.Unmarshal([]byte(metadataResult), &trackData); err != nil {
+		return fmt.Errorf("parse metadata: %w", err)
+	}
+
+	track := trackData.Track
+	if track.ISRC == "" && track.SpotifyID == "" {
+		return fmt.Errorf("no ISRC or SpotifyID")
+	}
+
+	// Check availability
+	var availResult string
+	if strings.HasPrefix(track.SpotifyID, "deezer:") {
+		deezerID := strings.TrimPrefix(track.SpotifyID, "deezer:")
+		availResult, err = backend.CheckAvailabilityFromDeezerID(deezerID)
+	} else if track.SpotifyID != "" {
+		availResult, err = backend.CheckAvailability(track.SpotifyID, track.ISRC)
+	} else {
+		availResult, err = backend.CheckAvailability("", track.ISRC)
+	}
+
+	if err != nil {
+		return fmt.Errorf("availability: %w", err)
+	}
+
+	var availability struct {
+		Tidal  bool `json:"tidal"`
+		Qobuz  bool `json:"qobuz"`
+		Amazon bool `json:"amazon"`
+	}
+	if err := json.Unmarshal([]byte(availResult), &availability); err != nil {
+		return fmt.Errorf("parse availability: %w", err)
+	}
+
+	// Determine service
+	provider := b.getUserProvider(chatID)
+	service := ""
+	if provider == ProviderAuto {
+		if availability.Tidal {
+			service = ProviderTidal
+		} else if availability.Qobuz {
+			service = ProviderQobuz
+		} else if availability.Amazon {
+			service = ProviderAmazon
+		}
+	} else {
+		switch provider {
+		case ProviderTidal:
+			if availability.Tidal {
+				service = ProviderTidal
+			}
+		case ProviderQobuz:
+			if availability.Qobuz {
+				service = ProviderQobuz
+			}
+		case ProviderAmazon:
+			if availability.Amazon {
+				service = ProviderAmazon
+			}
+		}
+		// Fallback if preferred not available
+		if service == "" {
+			if availability.Tidal {
+				service = ProviderTidal
+			} else if availability.Qobuz {
+				service = ProviderQobuz
+			} else if availability.Amazon {
+				service = ProviderAmazon
+			}
+		}
+	}
+
+	if service == "" {
+		return fmt.Errorf("not available")
+	}
+
+	// Prepare download request
+	itemID := fmt.Sprintf("tg_%d_%d", chatID, time.Now().UnixNano())
+	downloadReq := map[string]interface{}{
+		"isrc":                    track.ISRC,
+		"service":                 service,
+		"spotify_id":              track.SpotifyID,
+		"track_name":              track.Name,
+		"artist_name":             track.Artists,
+		"album_name":              track.AlbumName,
+		"album_artist":            track.AlbumArtist,
+		"cover_url":               track.Images,
+		"output_dir":              b.config.DownloadDir,
+		"filename_format":         "{artist} - {title}",
+		"quality":                 "HI_RES_LOSSLESS",
+		"embed_lyrics":            true,
+		"embed_max_quality_cover": true,
+		"track_number":            track.TrackNumber,
+		"disc_number":             track.DiscNumber,
+		"total_tracks":            track.TotalTracks,
+		"release_date":            track.ReleaseDate,
+		"item_id":                 itemID,
+		"duration_ms":             track.DurationMS,
+	}
+
+	reqJSON, _ := json.Marshal(downloadReq)
+
+	// Download
+	var result string
+	result, err = backend.DownloadWithFallback(string(reqJSON))
+	if err != nil {
+		return fmt.Errorf("download: %w", err)
+	}
+
+	var downloadResult struct {
+		Success          bool   `json:"success"`
+		FilePath         string `json:"file_path"`
+		Error            string `json:"error"`
+		ActualBitDepth   int    `json:"actual_bit_depth"`
+		ActualSampleRate int    `json:"actual_sample_rate"`
+		Service          string `json:"service"`
+	}
+
+	if err := json.Unmarshal([]byte(result), &downloadResult); err != nil {
+		return fmt.Errorf("parse result: %w", err)
+	}
+
+	if !downloadResult.Success {
+		return fmt.Errorf(downloadResult.Error)
+	}
+
+	// Upload to Telegram
+	err = b.uploadFile(chatID, downloadResult.FilePath, track.Name, track.Artists,
+		downloadResult.ActualBitDepth, downloadResult.ActualSampleRate, downloadResult.Service)
+
+	// Clean up
+	os.Remove(downloadResult.FilePath)
+
+	return err
+}
+
 func (b *Bot) handleCallbackQuery(callback *tgbotapi.CallbackQuery) {
 	data := callback.Data
 	chatID := callback.Message.Chat.ID
@@ -821,6 +958,20 @@ func (b *Bot) handleCallbackQuery(callback *tgbotapi.CallbackQuery) {
 
 	// Handle different callback types
 	switch {
+	case strings.HasPrefix(data, "dlall:"):
+		// Download all tracks from playlist/album
+		if b.isDownloading(chatID) {
+			b.api.Request(tgbotapi.NewCallback(callback.ID, "Download in progress"))
+			return
+		}
+		b.api.Request(tgbotapi.NewCallback(callback.ID, "Starting batch download..."))
+		// Parse: dlall:type:id
+		parts := strings.SplitN(strings.TrimPrefix(data, "dlall:"), ":", 2)
+		if len(parts) == 2 {
+			batchKey := parts[0] + ":" + parts[1]
+			go b.downloadBatch(chatID, messageID, batchKey)
+		}
+
 	case strings.HasPrefix(data, "dl:"):
 		// Check if already downloading
 		if b.isDownloading(chatID) {
