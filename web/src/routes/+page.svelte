@@ -270,6 +270,15 @@
 		toasts.success(`Download complete: ${batchProgress.success}/${batchProgress.total} tracks`);
 	}
 
+	async function handleDownloadSingleFromList(track: TrackMetadata) {
+		const result = await downloadSingleTrack(track);
+		if (result.success) {
+			toasts.success(`Downloaded: ${track.title}`);
+		} else {
+			toasts.error(result.error || 'Download failed');
+		}
+	}
+
 	function getTrackStatus(track: TrackMetadata) {
 		const key = track.spotify_id || track.isrc || track.title;
 		return downloadResults.get(key);
@@ -621,7 +630,11 @@
 						<div class="border-t-2 border-violet-200 max-h-48 sm:max-h-64 overflow-y-auto">
 							{#each playlist.tracks as track, i}
 								{@const status = getTrackStatus(track)}
-								<div class="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 border-b border-violet-100 last:border-b-0 hover:bg-violet-50/50 transition-colors">
+								<button
+									class="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 border-b border-violet-100 last:border-b-0 hover:bg-violet-50/70 active:bg-violet-100/70 transition-colors text-left disabled:opacity-50"
+									onclick={() => handleDownloadSingleFromList(track)}
+									disabled={status?.status === 'downloading' || status?.status === 'success'}
+								>
 									<span class="w-4 sm:w-5 text-center text-[10px] sm:text-xs font-mono text-violet-400">{i + 1}</span>
 									{#if track.cover_url}
 										<img src={track.cover_url} alt="" class="w-7 h-7 sm:w-8 sm:h-8 rounded border border-violet-200 object-cover" />
@@ -637,16 +650,18 @@
 									{#if track.duration_ms}
 										<span class="text-[10px] font-mono text-slate-400 hidden sm:inline">{formatDuration(track.duration_ms)}</span>
 									{/if}
-									<div class="w-4 sm:w-5">
+									<div class="w-5 sm:w-6 flex justify-center">
 										{#if status?.status === 'downloading'}
 											<Loader2 class="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin text-violet-500" />
 										{:else if status?.status === 'success'}
 											<Check class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" />
 										{:else if status?.status === 'error'}
 											<X class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500" />
+										{:else}
+											<Download class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-violet-400" />
 										{/if}
 									</div>
-								</div>
+								</button>
 							{/each}
 						</div>
 					</div>

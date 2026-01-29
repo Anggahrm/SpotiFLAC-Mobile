@@ -30,7 +30,7 @@
 </script>
 
 <div
-	transition:fly={{ y: 20, duration: 200 }}
+	transition:fly={{ y: -20, duration: 200 }}
 	class="flex items-center gap-3 rounded-lg border-2 p-3 shadow-[3px_3px_0px_0px_#c4b5fd] {colors[type]}"
 >
 	<Icon class="h-5 w-5 flex-shrink-0 {type === 'loading' ? 'animate-spin' : ''}" />
