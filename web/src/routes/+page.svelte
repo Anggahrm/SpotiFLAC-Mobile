@@ -145,31 +145,53 @@
 		downloadResults = new Map(downloadResults);
 
 		try {
+			// Step 1: If we don't have ISRC, fetch full metadata first (like Telegram bot does)
+			let trackData = track;
+			if (!track.isrc && track.spotify_id) {
+				try {
+					const isDeezerTrack = track.spotify_id.startsWith('deezer:');
+					let url: string;
+					if (isDeezerTrack) {
+						const deezerId = track.spotify_id.replace('deezer:', '');
+						url = `https://www.deezer.com/track/${deezerId}`;
+					} else {
+						url = `https://open.spotify.com/track/${track.spotify_id}`;
+					}
+					const fullMetadata = await getMetadata(url);
+					if (fullMetadata.track) {
+						trackData = fullMetadata.track;
+					}
+				} catch {
+					// Continue with original track data if metadata fetch fails
+				}
+			}
+
+			// Step 2: Check availability (like Telegram bot)
 			let service = provider;
 			if (provider === 'auto') {
-				// Check if this is a Deezer track (ID starts with "deezer:")
-				const isDeezerTrack = track.spotify_id?.startsWith('deezer:');
-				const deezerId = isDeezerTrack ? track.spotify_id?.replace('deezer:', '') : undefined;
-				const spotifyId = isDeezerTrack ? undefined : track.spotify_id;
+				const isDeezerTrack = trackData.spotify_id?.startsWith('deezer:');
+				const deezerId = isDeezerTrack ? trackData.spotify_id?.replace('deezer:', '') : undefined;
+				const spotifyId = isDeezerTrack ? undefined : trackData.spotify_id;
 				
-				const avail = await checkAvailability(spotifyId, track.isrc, deezerId);
+				const avail = await checkAvailability(spotifyId, trackData.isrc, deezerId);
 				if (avail.tidal) service = 'tidal';
 				else if (avail.qobuz) service = 'qobuz';
 				else if (avail.amazon) service = 'amazon';
 				else throw new Error('Not available on any service');
 			}
 
+			// Step 3: Download with full metadata including ISRC
 			const result = await downloadTrack({
-				track_name: track.title,
-				artist_name: track.artist,
-				album_name: track.album,
-				album_artist: track.album_artist,
-				cover_url: track.cover_url,
-				spotify_id: track.spotify_id,
-				isrc: track.isrc,
+				track_name: trackData.title,
+				artist_name: trackData.artist,
+				album_name: trackData.album,
+				album_artist: trackData.album_artist,
+				cover_url: trackData.cover_url,
+				spotify_id: trackData.spotify_id,
+				isrc: trackData.isrc,
 				service: service === 'auto' ? undefined : service,
 				item_id: crypto.randomUUID(),
-				duration_ms: track.duration_ms
+				duration_ms: trackData.duration_ms
 			});
 
 			if (result.success && result.file_name) {
