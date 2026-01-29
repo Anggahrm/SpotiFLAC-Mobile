@@ -5,19 +5,24 @@
 		getFileUrl,
 		formatDuration,
 		checkAvailability,
+		search,
 		type MetadataResult,
 		type TrackMetadata
 	} from '$lib/api';
 	import { toasts } from '$lib/stores/toasts';
-	import { Download, Loader2, Music, Disc3, ListMusic, Check, X, ChevronDown, Terminal, Sparkles } from 'lucide-svelte';
+	import { Download, Loader2, Music, Disc3, ListMusic, Check, X, ChevronDown, Terminal, Sparkles, Search } from 'lucide-svelte';
 
 	type Provider = 'auto' | 'tidal' | 'qobuz' | 'amazon';
+	type SearchSource = 'spotify' | 'deezer';
 
-	let url = $state('');
+	let query = $state('');
 	let metadata: MetadataResult | null = $state(null);
+	let searchResults: TrackMetadata[] = $state([]);
 	let loading = $state(false);
 	let provider: Provider = $state('auto');
+	let searchSource: SearchSource = $state('deezer');
 	let showProviderMenu = $state(false);
+	let isSearchMode = $state(false);
 
 	// Download states
 	let downloading = $state(false);
@@ -32,13 +37,60 @@
 		{ id: 'amazon', name: 'Amazon' }
 	];
 
+	function isUrl(str: string): boolean {
+		return str.includes('spotify.com') || str.includes('deezer.com') || str.startsWith('http');
+	}
+
 	async function handleSubmit(e: Event) {
 		e.preventDefault();
-		await fetchMetadata();
+		const trimmed = query.trim();
+		if (!trimmed) return;
+
+		if (isUrl(trimmed)) {
+			isSearchMode = false;
+			searchResults = [];
+			await fetchMetadata();
+		} else {
+			isSearchMode = true;
+			metadata = null;
+			await handleSearch();
+		}
+	}
+
+	async function handleSearch() {
+		const trimmed = query.trim();
+		if (!trimmed) return;
+
+		loading = true;
+		searchResults = [];
+		downloadResults = new Map();
+
+		try {
+			const result = await search(trimmed, searchSource, 20);
+			searchResults = result.tracks;
+			if (searchResults.length > 0) {
+				toasts.success(`Found ${searchResults.length} tracks`);
+			} else {
+				toasts.error('No tracks found');
+			}
+		} catch (err) {
+			toasts.error(err instanceof Error ? err.message : 'Search failed');
+		} finally {
+			loading = false;
+		}
+	}
+
+	async function selectTrack(track: TrackMetadata) {
+		metadata = {
+			type: 'track',
+			track
+		};
+		searchResults = [];
+		isSearchMode = false;
 	}
 
 	async function fetchMetadata() {
-		const trimmedUrl = url.trim();
+		const trimmedUrl = query.trim();
 		if (!trimmedUrl) return;
 
 		if (!trimmedUrl.includes('spotify.com') && !trimmedUrl.includes('deezer.com')) {
@@ -156,9 +208,11 @@
 	}
 
 	function reset() {
-		url = '';
+		query = '';
 		metadata = null;
+		searchResults = [];
 		downloadResults = new Map();
+		isSearchMode = false;
 	}
 </script>
 
@@ -198,28 +252,86 @@
 				{/each}
 			</div>
 
-			<!-- URL Input -->
+			<!-- Search Source Toggle -->
+			<div class="flex gap-2 mb-4">
+				<button
+					class="flex-1 px-3 py-1.5 text-xs font-bold border-2 transition-all duration-200 rounded {searchSource === 'deezer'
+						? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-500 shadow-[2px_2px_0px_0px_#fcd34d]'
+						: 'bg-white text-slate-600 border-amber-200 hover:border-amber-400 hover:bg-amber-50'}"
+					onclick={() => searchSource = 'deezer'}
+				>
+					Deezer Search
+				</button>
+				<button
+					class="flex-1 px-3 py-1.5 text-xs font-bold border-2 transition-all duration-200 rounded {searchSource === 'spotify'
+						? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-emerald-500 shadow-[2px_2px_0px_0px_#6ee7b7]'
+						: 'bg-white text-slate-600 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50'}"
+					onclick={() => searchSource = 'spotify'}
+				>
+					Spotify Search
+				</button>
+			</div>
+
+			<!-- URL/Search Input -->
 			<form onsubmit={handleSubmit} class="mb-4">
 				<div class="relative">
 					<input
-						type="url"
-						placeholder="Paste Spotify or Deezer URL..."
+						type="text"
+						placeholder="Paste URL or search by song/artist name..."
 						class="w-full h-12 px-4 pr-20 text-sm border-2 border-violet-300 bg-gradient-to-r from-violet-50/50 to-sky-50/50 rounded-lg outline-none transition-all focus:border-violet-500 focus:shadow-[0_0_10px_rgba(139,92,246,0.2)] placeholder:text-slate-400"
-						bind:value={url}
+						bind:value={query}
 					/>
 					<button
 						type="submit"
-						disabled={loading || !url.trim()}
+						disabled={loading || !query.trim()}
 						class="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 text-xs font-bold bg-gradient-to-r from-violet-500 to-sky-500 text-white border-2 border-violet-500 rounded shadow-[2px_2px_0px_0px_#c4b5fd] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-[2px_2px_0px_0px_#c4b5fd] disabled:hover:translate-x-0 disabled:hover:translate-y-0"
 					>
 						{#if loading}
 							<Loader2 class="w-4 h-4 animate-spin" />
-						{:else}
+						{:else if isUrl(query.trim())}
 							FETCH
+						{:else}
+							<Search class="w-4 h-4" />
 						{/if}
 					</button>
 				</div>
 			</form>
+
+			<!-- Search Results -->
+			{#if searchResults.length > 0}
+				<div class="border-2 border-violet-200 rounded-lg overflow-hidden bg-gradient-to-r from-violet-50/30 to-sky-50/30 mb-4">
+					<div class="px-4 py-2 border-b-2 border-violet-200 bg-gradient-to-r from-violet-100/50 to-sky-100/50">
+						<span class="text-xs font-bold text-violet-600">SEARCH RESULTS ({searchResults.length})</span>
+					</div>
+					<div class="max-h-80 overflow-y-auto">
+						{#each searchResults as track, i}
+							<button
+								class="w-full flex items-center gap-3 px-4 py-3 border-b border-violet-100 last:border-b-0 hover:bg-violet-50/70 transition-colors text-left"
+								onclick={() => selectTrack(track)}
+							>
+								{#if track.cover_url}
+									<img src={track.cover_url} alt="" class="w-12 h-12 rounded border-2 border-violet-200 object-cover shadow-[2px_2px_0px_0px_#c4b5fd]" />
+								{:else}
+									<div class="w-12 h-12 rounded border-2 border-violet-200 bg-violet-50 flex items-center justify-center">
+										<Music class="w-5 h-5 text-violet-400" />
+									</div>
+								{/if}
+								<div class="flex-1 min-w-0">
+									<p class="text-sm font-medium text-slate-700 truncate">{track.title}</p>
+									<p class="text-xs text-slate-500 truncate">{track.artist}</p>
+									{#if track.album}
+										<p class="text-[10px] text-slate-400 truncate">{track.album}</p>
+									{/if}
+								</div>
+								{#if track.duration_ms}
+									<span class="text-[10px] font-mono text-slate-400">{formatDuration(track.duration_ms)}</span>
+								{/if}
+								<Download class="w-4 h-4 text-violet-400" />
+							</button>
+						{/each}
+					</div>
+				</div>
+			{/if}
 
 			<!-- Content -->
 			{#if metadata}
@@ -486,9 +598,9 @@
 					<div class="w-20 h-20 mx-auto mb-4 rounded-lg border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-sky-50 flex items-center justify-center shadow-[3px_3px_0px_0px_#c4b5fd]">
 						<Sparkles class="w-8 h-8 text-violet-400" />
 					</div>
-					<h2 class="font-bold text-slate-700 mb-1">Paste a URL to start</h2>
+					<h2 class="font-bold text-slate-700 mb-1">Search or paste URL</h2>
 					<p class="text-xs text-slate-500 mb-4">
-						Supports Spotify & Deezer tracks, albums, playlists
+						Search by song/artist name or paste Spotify/Deezer URL
 					</p>
 					<div class="flex flex-wrap justify-center gap-2">
 						<span class="px-3 py-1 text-[10px] font-bold bg-gradient-to-r from-violet-100 to-sky-100 text-violet-600 rounded-full border border-violet-200">TIDAL</span>
