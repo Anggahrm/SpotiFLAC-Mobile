@@ -147,7 +147,12 @@
 		try {
 			let service = provider;
 			if (provider === 'auto') {
-				const avail = await checkAvailability(track.spotify_id, track.isrc);
+				// Check if this is a Deezer track (ID starts with "deezer:")
+				const isDeezerTrack = track.spotify_id?.startsWith('deezer:');
+				const deezerId = isDeezerTrack ? track.spotify_id?.replace('deezer:', '') : undefined;
+				const spotifyId = isDeezerTrack ? undefined : track.spotify_id;
+				
+				const avail = await checkAvailability(spotifyId, track.isrc, deezerId);
 				if (avail.tidal) service = 'tidal';
 				else if (avail.qobuz) service = 'qobuz';
 				else if (avail.amazon) service = 'amazon';
