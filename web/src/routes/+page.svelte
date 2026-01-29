@@ -194,13 +194,15 @@
 				duration_ms: trackData.duration_ms
 			});
 
-			if (result.success && result.file_name) {
-				downloadResults.set(trackKey, { status: 'success', fileName: result.file_name });
+			if (result.success && result.file_path) {
+				// Extract filename from path
+				const fileName = result.file_path.split('/').pop() || result.file_path;
+				downloadResults.set(trackKey, { status: 'success', fileName });
 				downloadResults = new Map(downloadResults);
 
 				const link = document.createElement('a');
-				link.href = getFileUrl(result.file_name);
-				link.download = result.file_name;
+				link.href = getFileUrl(fileName);
+				link.download = fileName;
 				link.click();
 
 				return { success: true };
