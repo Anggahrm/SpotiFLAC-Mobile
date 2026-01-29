@@ -20,7 +20,7 @@
 	let searchResults: TrackMetadata[] = $state([]);
 	let loading = $state(false);
 	let provider: Provider = $state('auto');
-	let searchSource: SearchSource = $state('deezer');
+	let searchSource: SearchSource = $state('spotify');
 	let isSearchMode = $state(false);
 	let debounceTimer: ReturnType<typeof setTimeout> | null = $state(null);
 

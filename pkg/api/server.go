@@ -184,6 +184,20 @@ func (s *Server) metadataHandler(w http.ResponseWriter, r *http.Request) {
 	// Detect if it's a Spotify or Deezer URL
 	if strings.Contains(urlParam, "spotify.com") || strings.Contains(urlParam, "spotify:") {
 		result, err = backend.GetSpotifyMetadataWithDeezerFallback(urlParam)
+
+		// If failed and it's a playlist, try Spotify Web API as fallback (same as Telegram bot)
+		if err != nil {
+			parseResult, parseErr := backend.ParseSpotifyURL(urlParam)
+			if parseErr == nil {
+				var parsed struct {
+					Type string `json:"type"`
+					ID   string `json:"id"`
+				}
+				if json.Unmarshal([]byte(parseResult), &parsed) == nil && parsed.Type == "playlist" {
+					result, err = backend.GetSpotifyWebPlaylist(parsed.ID)
+				}
+			}
+		}
 	} else if strings.Contains(urlParam, "deezer.com") {
 		// Parse Deezer URL to get type and ID
 		parsed, parseErr := backend.ParseDeezerURLExport(urlParam)
