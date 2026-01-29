@@ -260,7 +260,7 @@
 						: 'bg-white text-slate-600 border-amber-200 hover:border-amber-400 hover:bg-amber-50'}"
 					onclick={() => searchSource = 'deezer'}
 				>
-					Deezer Search
+					Deezer
 				</button>
 				<button
 					class="flex-1 px-3 py-1.5 text-xs font-bold border-2 transition-all duration-200 rounded {searchSource === 'spotify'
@@ -268,7 +268,7 @@
 						: 'bg-white text-slate-600 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50'}"
 					onclick={() => searchSource = 'spotify'}
 				>
-					Spotify Search
+					Spotify
 				</button>
 			</div>
 

@@ -141,10 +141,14 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	switch source {
 	case "deezer":
 		result, err = backend.SearchDeezerAll(query, trackLimit, artistLimit)
-	case "spotify":
+	case "spotify", "spotify_web":
+		// Use Spotify Web (internal API) - same as Telegram bot, no rate limits
+		result, err = backend.SearchSpotifyWeb(query, trackLimit)
+	case "spotify_api":
+		// Use official Spotify API (may be rate limited)
 		result, err = backend.SearchSpotifyAll(query, trackLimit, artistLimit)
 	default:
-		writeError(w, http.StatusBadRequest, "Invalid source. Use 'deezer' or 'spotify'")
+		writeError(w, http.StatusBadRequest, "Invalid source. Use 'deezer', 'spotify', or 'spotify_api'")
 		return
 	}
 
