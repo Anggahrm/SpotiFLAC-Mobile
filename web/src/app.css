@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
 
 * {
 	box-sizing: border-box;
@@ -7,19 +8,23 @@
 }
 
 html {
-	font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+	font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+	overflow-x: hidden;
+	scrollbar-gutter: stable;
 }
 
 body {
-	background-color: #000000;
-	color: #fafafa;
+	background-color: #f8fafc;
+	color: #1e293b;
 	min-height: 100vh;
+	width: 100%;
+	overflow-x: hidden;
 }
 
 a {
-	color: #10b981;
+	color: #8b5cf6;
 	text-decoration: none;
 }
 
@@ -27,21 +32,40 @@ a:hover {
 	text-decoration: underline;
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - matches kuroneko style */
 ::-webkit-scrollbar {
-	width: 8px;
-	height: 8px;
+	width: 10px;
+	height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-	background: #18181b;
+	background: #e2e8f0;
+	border-left: 2px solid #c4b5fd;
 }
 
 ::-webkit-scrollbar-thumb {
-	background: #3f3f46;
-	border-radius: 4px;
+	background: #8b5cf6;
+	border: 2px solid #e2e8f0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: #52525b;
+	background: #7c3aed;
+}
+
+/* Selection color */
+::selection {
+	background: #8b5cf6;
+	color: white;
+}
+
+/* Skeleton loading animation */
+.skeleton {
+	background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+	background-size: 200% 100%;
+	animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+	0% { background-position: 200% 0; }
+	100% { background-position: -200% 0; }
 }

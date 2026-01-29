@@ -9,7 +9,7 @@
 		type TrackMetadata
 	} from '$lib/api';
 	import { toasts } from '$lib/stores/toasts';
-	import { Download, Loader2, Music, Disc3, ListMusic, Check, X, ChevronDown } from 'lucide-svelte';
+	import { Download, Loader2, Music, Disc3, ListMusic, Check, X, ChevronDown, Terminal, Sparkles } from 'lucide-svelte';
 
 	type Provider = 'auto' | 'tidal' | 'qobuz' | 'amazon';
 
@@ -26,10 +26,10 @@
 	let downloadResults: Map<string, { status: 'pending' | 'downloading' | 'success' | 'error'; fileName?: string }> = $state(new Map());
 
 	const providers: { id: Provider; name: string }[] = [
-		{ id: 'auto', name: 'Auto (Best Available)' },
+		{ id: 'auto', name: 'Auto' },
 		{ id: 'tidal', name: 'Tidal' },
 		{ id: 'qobuz', name: 'Qobuz' },
-		{ id: 'amazon', name: 'Amazon Music' }
+		{ id: 'amazon', name: 'Amazon' }
 	];
 
 	async function handleSubmit(e: Event) {
@@ -162,360 +162,353 @@
 	}
 </script>
 
-<div class="min-h-screen bg-black">
-	<!-- Header -->
-	<header class="border-b border-zinc-800 bg-zinc-950">
-		<div class="mx-auto flex h-16 max-w-4xl items-center justify-between px-4">
-			<div class="flex items-center gap-3">
-				<div class="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500">
-					<Music class="h-5 w-5 text-black" />
-				</div>
-				<span class="text-lg font-semibold text-white">zFlac Downloader</span>
+<div class="min-h-screen flex items-center justify-center font-mono p-4 selection:bg-violet-500 selection:text-white bg-gradient-to-b from-slate-50 to-white relative overflow-hidden">
+	<!-- Gradient blobs -->
+	<div class="fixed bottom-0 left-0 w-[400px] h-[400px] bg-gradient-to-tr from-sky-400/20 to-violet-500/20 blur-[100px] rounded-full pointer-events-none -z-10 translate-y-1/3 -translate-x-1/4"></div>
+	<div class="fixed top-0 right-0 w-[300px] h-[300px] bg-gradient-to-bl from-violet-300/20 to-sky-400/20 blur-[80px] rounded-full pointer-events-none -z-10 -translate-y-1/3 translate-x-1/4"></div>
+
+	<!-- Main Card -->
+	<div class="bg-white border-2 border-violet-500 shadow-[4px_4px_0px_0px_#c4b5fd] max-w-lg w-full relative group transition-all duration-300 hover:shadow-[6px_6px_0px_0px_#8b5cf6] rounded-lg overflow-hidden">
+
+		<!-- Terminal Header -->
+		<div class="bg-gradient-to-r from-violet-500 to-sky-500 text-white px-4 py-3 flex justify-between items-center border-b-2 border-violet-500">
+			<div class="flex gap-2">
+				<div class="w-3 h-3 rounded-full bg-red-400 border border-white/30"></div>
+				<div class="w-3 h-3 rounded-full bg-yellow-400 border border-white/30"></div>
+				<div class="w-3 h-3 rounded-full bg-green-400 border border-white/30"></div>
 			</div>
-
-			<!-- Provider selector -->
-			<div class="relative">
-				<button
-					class="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
-					onclick={() => showProviderMenu = !showProviderMenu}
-				>
-					{providers.find(p => p.id === provider)?.name}
-					<ChevronDown class="h-4 w-4" />
-				</button>
-
-				{#if showProviderMenu}
-					<div class="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
-						{#each providers as p}
-							<button
-								class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-800"
-								onclick={() => { provider = p.id; showProviderMenu = false; }}
-							>
-								{#if provider === p.id}
-									<Check class="h-4 w-4 text-emerald-500" />
-								{:else}
-									<span class="w-4"></span>
-								{/if}
-								{p.name}
-							</button>
-						{/each}
-					</div>
-				{/if}
+			<div class="text-xs font-bold tracking-widest opacity-90 flex items-center gap-2">
+				<Terminal class="w-3 h-3" />
+				<span>zFlac</span>
 			</div>
 		</div>
-	</header>
 
-	<main class="mx-auto max-w-4xl px-4 py-8">
-		<!-- URL Input -->
-		<form onsubmit={handleSubmit} class="mb-8">
-			<div class="relative">
-				<input
-					type="url"
-					placeholder="Paste Spotify or Deezer URL (track, album, or playlist)"
-					class="h-14 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 pr-24 text-white placeholder-zinc-500 outline-none transition-colors focus:border-emerald-500"
-					bind:value={url}
-				/>
-				<button
-					type="submit"
-					disabled={loading || !url.trim()}
-					class="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-emerald-500 px-4 py-2 font-medium text-black transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
-				>
-					{#if loading}
-						<Loader2 class="h-5 w-5 animate-spin" />
-					{:else}
-						Fetch
-					{/if}
-				</button>
+		<div class="p-6">
+			<!-- Provider Selector -->
+			<div class="flex gap-2 mb-4">
+				{#each providers as p}
+					<button
+						class="flex-1 px-3 py-2 text-xs font-bold border-2 transition-all duration-200 rounded {provider === p.id
+							? 'bg-gradient-to-r from-violet-500 to-sky-500 text-white border-violet-500 shadow-[2px_2px_0px_0px_#c4b5fd]'
+							: 'bg-white text-slate-600 border-violet-200 hover:border-violet-400 hover:bg-violet-50'}"
+						onclick={() => provider = p.id}
+					>
+						{p.name}
+					</button>
+				{/each}
 			</div>
-		</form>
 
-		<!-- Content -->
-		{#if metadata}
-			<!-- Track View -->
-			{#if metadata.type === 'track' && metadata.track}
-				{@const track = metadata.track}
-				{@const trackStatus = getTrackStatus(track)}
-				<div class="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
-					<div class="flex gap-4 p-4 sm:p-6">
-						{#if track.cover_url}
-							<img
-								src={track.cover_url}
-								alt={track.title}
-								class="h-32 w-32 flex-shrink-0 rounded-lg object-cover shadow-lg sm:h-40 sm:w-40"
-							/>
+			<!-- URL Input -->
+			<form onsubmit={handleSubmit} class="mb-4">
+				<div class="relative">
+					<input
+						type="url"
+						placeholder="Paste Spotify or Deezer URL..."
+						class="w-full h-12 px-4 pr-20 text-sm border-2 border-violet-300 bg-gradient-to-r from-violet-50/50 to-sky-50/50 rounded-lg outline-none transition-all focus:border-violet-500 focus:shadow-[0_0_10px_rgba(139,92,246,0.2)] placeholder:text-slate-400"
+						bind:value={url}
+					/>
+					<button
+						type="submit"
+						disabled={loading || !url.trim()}
+						class="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 text-xs font-bold bg-gradient-to-r from-violet-500 to-sky-500 text-white border-2 border-violet-500 rounded shadow-[2px_2px_0px_0px_#c4b5fd] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-[2px_2px_0px_0px_#c4b5fd] disabled:hover:translate-x-0 disabled:hover:translate-y-0"
+					>
+						{#if loading}
+							<Loader2 class="w-4 h-4 animate-spin" />
 						{:else}
-							<div class="flex h-32 w-32 flex-shrink-0 items-center justify-center rounded-lg bg-zinc-800 sm:h-40 sm:w-40">
-								<Music class="h-12 w-12 text-zinc-600" />
-							</div>
+							FETCH
 						{/if}
+					</button>
+				</div>
+			</form>
 
-						<div class="flex min-w-0 flex-1 flex-col justify-between">
-							<div>
-								<h2 class="truncate text-xl font-bold text-white sm:text-2xl">{track.title}</h2>
-								<p class="mt-1 truncate text-zinc-400">{track.artist}</p>
+			<!-- Content -->
+			{#if metadata}
+				<!-- Track View -->
+				{#if metadata.type === 'track' && metadata.track}
+					{@const track = metadata.track}
+					{@const trackStatus = getTrackStatus(track)}
+					<div class="border-2 border-violet-200 rounded-lg overflow-hidden bg-gradient-to-r from-violet-50/30 to-sky-50/30">
+						<div class="flex gap-4 p-4">
+							{#if track.cover_url}
+								<img
+									src={track.cover_url}
+									alt={track.title}
+									class="w-24 h-24 flex-shrink-0 rounded border-2 border-violet-200 object-cover shadow-[2px_2px_0px_0px_#c4b5fd]"
+								/>
+							{:else}
+								<div class="w-24 h-24 flex-shrink-0 rounded border-2 border-violet-200 bg-gradient-to-br from-violet-100 to-sky-100 flex items-center justify-center">
+									<Music class="w-8 h-8 text-violet-400" />
+								</div>
+							{/if}
+
+							<div class="flex-1 min-w-0">
+								<div class="flex items-center gap-2 mb-1">
+									<span class="px-2 py-0.5 text-[10px] font-bold bg-gradient-to-r from-violet-500 to-sky-500 text-white rounded-full">TRACK</span>
+								</div>
+								<h3 class="font-bold text-slate-800 truncate">{track.title}</h3>
+								<p class="text-sm text-slate-500 truncate">{track.artist}</p>
 								{#if track.album}
-									<p class="mt-0.5 truncate text-sm text-zinc-500">{track.album}</p>
+									<p class="text-xs text-slate-400 truncate mt-0.5">{track.album}</p>
 								{/if}
-							</div>
-
-							<div class="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-								{#if track.duration_ms}
-									<span class="rounded bg-zinc-800 px-2 py-1">{formatDuration(track.duration_ms)}</span>
-								{/if}
-								{#if track.release_date}
-									<span class="rounded bg-zinc-800 px-2 py-1">{track.release_date.split('-')[0]}</span>
-								{/if}
-							</div>
-						</div>
-					</div>
-
-					<div class="border-t border-zinc-800 p-4">
-						{#if trackStatus?.status === 'success'}
-							<a
-								href={getFileUrl(trackStatus.fileName || '')}
-								download
-								class="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-3 font-medium text-black transition-all hover:bg-emerald-400"
-							>
-								<Download class="h-5 w-5" />
-								Save File
-							</a>
-						{:else}
-							<button
-								onclick={handleDownloadTrack}
-								disabled={downloading}
-								class="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-3 font-medium text-black transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
-							>
-								{#if downloading}
-									<Loader2 class="h-5 w-5 animate-spin" />
-									Downloading...
-								{:else}
-									<Download class="h-5 w-5" />
-									Download FLAC
-								{/if}
-							</button>
-						{/if}
-					</div>
-				</div>
-
-			<!-- Album View -->
-			{:else if metadata.type === 'album' && metadata.album}
-				{@const album = metadata.album}
-				<div class="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
-					<div class="flex gap-4 p-4 sm:p-6">
-						{#if album.cover_url}
-							<img
-								src={album.cover_url}
-								alt={album.name}
-								class="h-32 w-32 flex-shrink-0 rounded-lg object-cover shadow-lg sm:h-40 sm:w-40"
-							/>
-						{:else}
-							<div class="flex h-32 w-32 flex-shrink-0 items-center justify-center rounded-lg bg-zinc-800 sm:h-40 sm:w-40">
-								<Disc3 class="h-12 w-12 text-zinc-600" />
-							</div>
-						{/if}
-
-						<div class="flex min-w-0 flex-1 flex-col justify-between">
-							<div>
-								<div class="mb-1 flex items-center gap-2">
-									<span class="rounded bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-400">ALBUM</span>
-								</div>
-								<h2 class="truncate text-xl font-bold text-white sm:text-2xl">{album.name}</h2>
-								<p class="mt-1 truncate text-zinc-400">{album.artist}</p>
-							</div>
-
-							<div class="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-								<span class="rounded bg-zinc-800 px-2 py-1">{album.total_tracks} tracks</span>
-								{#if album.release_date}
-									<span class="rounded bg-zinc-800 px-2 py-1">{album.release_date.split('-')[0]}</span>
-								{/if}
-							</div>
-						</div>
-					</div>
-
-					<!-- Download All Button -->
-					<div class="border-t border-zinc-800 p-4">
-						{#if batchDownloading}
-							<div class="space-y-2">
-								<div class="flex items-center justify-between text-sm">
-									<span class="text-zinc-400">Downloading {batchProgress.current}/{batchProgress.total}</span>
-									<span class="text-zinc-500">
-										<span class="text-emerald-500">{batchProgress.success}</span> /
-										<span class="text-red-500">{batchProgress.failed}</span>
-									</span>
-								</div>
-								<div class="h-2 overflow-hidden rounded-full bg-zinc-800">
-									<div
-										class="h-full bg-emerald-500 transition-all"
-										style="width: {(batchProgress.current / batchProgress.total) * 100}%"
-									></div>
-								</div>
-							</div>
-						{:else}
-							<button
-								onclick={handleDownloadAll}
-								class="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-3 font-medium text-black transition-all hover:bg-emerald-400"
-							>
-								<Download class="h-5 w-5" />
-								Download All ({album.total_tracks} tracks)
-							</button>
-						{/if}
-					</div>
-
-					<!-- Track List -->
-					<div class="border-t border-zinc-800">
-						{#each album.tracks as track, i}
-							{@const status = getTrackStatus(track)}
-							<div class="flex items-center gap-3 border-b border-zinc-800/50 px-4 py-3 last:border-b-0">
-								<span class="w-6 text-center text-sm text-zinc-600">{i + 1}</span>
-
-								<div class="min-w-0 flex-1">
-									<p class="truncate text-sm text-white">{track.title}</p>
-									<p class="truncate text-xs text-zinc-500">{track.artist}</p>
-								</div>
-
-								{#if track.duration_ms}
-									<span class="text-xs text-zinc-600">{formatDuration(track.duration_ms)}</span>
-								{/if}
-
-								<div class="w-6">
-									{#if status?.status === 'downloading'}
-										<Loader2 class="h-4 w-4 animate-spin text-emerald-500" />
-									{:else if status?.status === 'success'}
-										<Check class="h-4 w-4 text-emerald-500" />
-									{:else if status?.status === 'error'}
-										<X class="h-4 w-4 text-red-500" />
+								<div class="flex gap-2 mt-2">
+									{#if track.duration_ms}
+										<span class="px-2 py-0.5 text-[10px] font-mono bg-violet-100 text-violet-600 rounded">{formatDuration(track.duration_ms)}</span>
+									{/if}
+									{#if track.release_date}
+										<span class="px-2 py-0.5 text-[10px] font-mono bg-sky-100 text-sky-600 rounded">{track.release_date.split('-')[0]}</span>
 									{/if}
 								</div>
 							</div>
-						{/each}
-					</div>
-				</div>
+						</div>
 
-			<!-- Playlist View -->
-			{:else if metadata.type === 'playlist' && metadata.playlist}
-				{@const playlist = metadata.playlist}
-				<div class="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
-					<div class="flex gap-4 p-4 sm:p-6">
-						{#if playlist.cover_url}
-							<img
-								src={playlist.cover_url}
-								alt={playlist.name}
-								class="h-32 w-32 flex-shrink-0 rounded-lg object-cover shadow-lg sm:h-40 sm:w-40"
-							/>
-						{:else}
-							<div class="flex h-32 w-32 flex-shrink-0 items-center justify-center rounded-lg bg-zinc-800 sm:h-40 sm:w-40">
-								<ListMusic class="h-12 w-12 text-zinc-600" />
-							</div>
-						{/if}
-
-						<div class="flex min-w-0 flex-1 flex-col justify-between">
-							<div>
-								<div class="mb-1 flex items-center gap-2">
-									<span class="rounded bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-400">PLAYLIST</span>
-								</div>
-								<h2 class="truncate text-xl font-bold text-white sm:text-2xl">{playlist.name}</h2>
-								{#if playlist.owner}
-									<p class="mt-1 truncate text-zinc-400">by {playlist.owner}</p>
-								{/if}
-							</div>
-
-							<div class="mt-4">
-								<span class="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-500">{playlist.total_tracks} tracks</span>
-							</div>
+						<div class="border-t-2 border-violet-200 p-3">
+							{#if trackStatus?.status === 'success'}
+								<a
+									href={getFileUrl(trackStatus.fileName || '')}
+									download
+									class="flex items-center justify-center gap-2 w-full py-2.5 text-sm font-bold bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-2 border-emerald-500 rounded shadow-[2px_2px_0px_0px_#6ee7b7] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
+								>
+									<Download class="w-4 h-4" />
+									SAVE FILE
+								</a>
+							{:else}
+								<button
+									onclick={handleDownloadTrack}
+									disabled={downloading}
+									class="flex items-center justify-center gap-2 w-full py-2.5 text-sm font-bold bg-gradient-to-r from-violet-500 to-sky-500 text-white border-2 border-violet-500 rounded shadow-[2px_2px_0px_0px_#c4b5fd] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+								>
+									{#if downloading}
+										<Loader2 class="w-4 h-4 animate-spin" />
+										DOWNLOADING...
+									{:else}
+										<Download class="w-4 h-4" />
+										DOWNLOAD FLAC
+									{/if}
+								</button>
+							{/if}
 						</div>
 					</div>
 
-					<!-- Download All Button -->
-					<div class="border-t border-zinc-800 p-4">
-						{#if batchDownloading}
-							<div class="space-y-2">
-								<div class="flex items-center justify-between text-sm">
-									<span class="text-zinc-400">Downloading {batchProgress.current}/{batchProgress.total}</span>
-									<span class="text-zinc-500">
-										<span class="text-emerald-500">{batchProgress.success}</span> /
-										<span class="text-red-500">{batchProgress.failed}</span>
-									</span>
+				<!-- Album View -->
+				{:else if metadata.type === 'album' && metadata.album}
+					{@const album = metadata.album}
+					<div class="border-2 border-violet-200 rounded-lg overflow-hidden bg-gradient-to-r from-violet-50/30 to-sky-50/30">
+						<div class="flex gap-4 p-4">
+							{#if album.cover_url}
+								<img
+									src={album.cover_url}
+									alt={album.name}
+									class="w-24 h-24 flex-shrink-0 rounded border-2 border-violet-200 object-cover shadow-[2px_2px_0px_0px_#c4b5fd]"
+								/>
+							{:else}
+								<div class="w-24 h-24 flex-shrink-0 rounded border-2 border-violet-200 bg-gradient-to-br from-violet-100 to-sky-100 flex items-center justify-center">
+									<Disc3 class="w-8 h-8 text-violet-400" />
 								</div>
-								<div class="h-2 overflow-hidden rounded-full bg-zinc-800">
-									<div
-										class="h-full bg-emerald-500 transition-all"
-										style="width: {(batchProgress.current / batchProgress.total) * 100}%"
-									></div>
+							{/if}
+
+							<div class="flex-1 min-w-0">
+								<div class="flex items-center gap-2 mb-1">
+									<span class="px-2 py-0.5 text-[10px] font-bold bg-gradient-to-r from-violet-500 to-sky-500 text-white rounded-full">ALBUM</span>
+								</div>
+								<h3 class="font-bold text-slate-800 truncate">{album.name}</h3>
+								<p class="text-sm text-slate-500 truncate">{album.artist}</p>
+								<div class="flex gap-2 mt-2">
+									<span class="px-2 py-0.5 text-[10px] font-mono bg-violet-100 text-violet-600 rounded">{album.total_tracks} tracks</span>
+									{#if album.release_date}
+										<span class="px-2 py-0.5 text-[10px] font-mono bg-sky-100 text-sky-600 rounded">{album.release_date.split('-')[0]}</span>
+									{/if}
 								</div>
 							</div>
-						{:else}
-							<button
-								onclick={handleDownloadAll}
-								class="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 py-3 font-medium text-black transition-all hover:bg-emerald-400"
-							>
-								<Download class="h-5 w-5" />
-								Download All ({playlist.total_tracks} tracks)
-							</button>
-						{/if}
-					</div>
+						</div>
 
-					<!-- Track List -->
-					<div class="max-h-96 overflow-y-auto border-t border-zinc-800">
-						{#each playlist.tracks as track, i}
-							{@const status = getTrackStatus(track)}
-							<div class="flex items-center gap-3 border-b border-zinc-800/50 px-4 py-3 last:border-b-0">
-								<span class="w-6 text-center text-sm text-zinc-600">{i + 1}</span>
-
-								{#if track.cover_url}
-									<img src={track.cover_url} alt="" class="h-10 w-10 rounded object-cover" />
-								{:else}
-									<div class="flex h-10 w-10 items-center justify-center rounded bg-zinc-800">
-										<Music class="h-4 w-4 text-zinc-600" />
+						<!-- Download All Button -->
+						<div class="border-t-2 border-violet-200 p-3">
+							{#if batchDownloading}
+								<div class="space-y-2">
+									<div class="flex items-center justify-between text-xs font-mono">
+										<span class="text-slate-600">Downloading {batchProgress.current}/{batchProgress.total}</span>
+										<span>
+											<span class="text-emerald-600">{batchProgress.success}</span> /
+											<span class="text-red-500">{batchProgress.failed}</span>
+										</span>
 									</div>
-								{/if}
-
-								<div class="min-w-0 flex-1">
-									<p class="truncate text-sm text-white">{track.title}</p>
-									<p class="truncate text-xs text-zinc-500">{track.artist}</p>
+									<div class="h-2 bg-violet-100 rounded-full overflow-hidden border border-violet-200">
+										<div
+											class="h-full bg-gradient-to-r from-violet-500 to-sky-500 transition-all"
+											style="width: {(batchProgress.current / batchProgress.total) * 100}%"
+										></div>
+									</div>
 								</div>
+							{:else}
+								<button
+									onclick={handleDownloadAll}
+									class="flex items-center justify-center gap-2 w-full py-2.5 text-sm font-bold bg-gradient-to-r from-violet-500 to-sky-500 text-white border-2 border-violet-500 rounded shadow-[2px_2px_0px_0px_#c4b5fd] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
+								>
+									<Download class="w-4 h-4" />
+									DOWNLOAD ALL ({album.total_tracks})
+								</button>
+							{/if}
+						</div>
 
-								{#if track.duration_ms}
-									<span class="text-xs text-zinc-600">{formatDuration(track.duration_ms)}</span>
-								{/if}
-
-								<div class="w-6">
-									{#if status?.status === 'downloading'}
-										<Loader2 class="h-4 w-4 animate-spin text-emerald-500" />
-									{:else if status?.status === 'success'}
-										<Check class="h-4 w-4 text-emerald-500" />
-									{:else if status?.status === 'error'}
-										<X class="h-4 w-4 text-red-500" />
+						<!-- Track List -->
+						<div class="border-t-2 border-violet-200 max-h-64 overflow-y-auto">
+							{#each album.tracks as track, i}
+								{@const status = getTrackStatus(track)}
+								<div class="flex items-center gap-3 px-4 py-2 border-b border-violet-100 last:border-b-0 hover:bg-violet-50/50 transition-colors">
+									<span class="w-5 text-center text-xs font-mono text-violet-400">{i + 1}</span>
+									<div class="flex-1 min-w-0">
+										<p class="text-sm text-slate-700 truncate">{track.title}</p>
+										<p class="text-xs text-slate-400 truncate">{track.artist}</p>
+									</div>
+									{#if track.duration_ms}
+										<span class="text-[10px] font-mono text-slate-400">{formatDuration(track.duration_ms)}</span>
 									{/if}
+									<div class="w-5">
+										{#if status?.status === 'downloading'}
+											<Loader2 class="w-4 h-4 animate-spin text-violet-500" />
+										{:else if status?.status === 'success'}
+											<Check class="w-4 h-4 text-emerald-500" />
+										{:else if status?.status === 'error'}
+											<X class="w-4 h-4 text-red-500" />
+										{/if}
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+
+				<!-- Playlist View -->
+				{:else if metadata.type === 'playlist' && metadata.playlist}
+					{@const playlist = metadata.playlist}
+					<div class="border-2 border-violet-200 rounded-lg overflow-hidden bg-gradient-to-r from-violet-50/30 to-sky-50/30">
+						<div class="flex gap-4 p-4">
+							{#if playlist.cover_url}
+								<img
+									src={playlist.cover_url}
+									alt={playlist.name}
+									class="w-24 h-24 flex-shrink-0 rounded border-2 border-violet-200 object-cover shadow-[2px_2px_0px_0px_#c4b5fd]"
+								/>
+							{:else}
+								<div class="w-24 h-24 flex-shrink-0 rounded border-2 border-violet-200 bg-gradient-to-br from-violet-100 to-sky-100 flex items-center justify-center">
+									<ListMusic class="w-8 h-8 text-violet-400" />
+								</div>
+							{/if}
+
+							<div class="flex-1 min-w-0">
+								<div class="flex items-center gap-2 mb-1">
+									<span class="px-2 py-0.5 text-[10px] font-bold bg-gradient-to-r from-violet-500 to-sky-500 text-white rounded-full">PLAYLIST</span>
+								</div>
+								<h3 class="font-bold text-slate-800 truncate">{playlist.name}</h3>
+								{#if playlist.owner}
+									<p class="text-sm text-slate-500 truncate">by {playlist.owner}</p>
+								{/if}
+								<div class="flex gap-2 mt-2">
+									<span class="px-2 py-0.5 text-[10px] font-mono bg-violet-100 text-violet-600 rounded">{playlist.total_tracks} tracks</span>
 								</div>
 							</div>
-						{/each}
+						</div>
+
+						<!-- Download All Button -->
+						<div class="border-t-2 border-violet-200 p-3">
+							{#if batchDownloading}
+								<div class="space-y-2">
+									<div class="flex items-center justify-between text-xs font-mono">
+										<span class="text-slate-600">Downloading {batchProgress.current}/{batchProgress.total}</span>
+										<span>
+											<span class="text-emerald-600">{batchProgress.success}</span> /
+											<span class="text-red-500">{batchProgress.failed}</span>
+										</span>
+									</div>
+									<div class="h-2 bg-violet-100 rounded-full overflow-hidden border border-violet-200">
+										<div
+											class="h-full bg-gradient-to-r from-violet-500 to-sky-500 transition-all"
+											style="width: {(batchProgress.current / batchProgress.total) * 100}%"
+										></div>
+									</div>
+								</div>
+							{:else}
+								<button
+									onclick={handleDownloadAll}
+									class="flex items-center justify-center gap-2 w-full py-2.5 text-sm font-bold bg-gradient-to-r from-violet-500 to-sky-500 text-white border-2 border-violet-500 rounded shadow-[2px_2px_0px_0px_#c4b5fd] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all"
+								>
+									<Download class="w-4 h-4" />
+									DOWNLOAD ALL ({playlist.total_tracks})
+								</button>
+							{/if}
+						</div>
+
+						<!-- Track List -->
+						<div class="border-t-2 border-violet-200 max-h-64 overflow-y-auto">
+							{#each playlist.tracks as track, i}
+								{@const status = getTrackStatus(track)}
+								<div class="flex items-center gap-3 px-4 py-2 border-b border-violet-100 last:border-b-0 hover:bg-violet-50/50 transition-colors">
+									<span class="w-5 text-center text-xs font-mono text-violet-400">{i + 1}</span>
+									{#if track.cover_url}
+										<img src={track.cover_url} alt="" class="w-8 h-8 rounded border border-violet-200 object-cover" />
+									{:else}
+										<div class="w-8 h-8 rounded border border-violet-200 bg-violet-50 flex items-center justify-center">
+											<Music class="w-3 h-3 text-violet-400" />
+										</div>
+									{/if}
+									<div class="flex-1 min-w-0">
+										<p class="text-sm text-slate-700 truncate">{track.title}</p>
+										<p class="text-xs text-slate-400 truncate">{track.artist}</p>
+									</div>
+									{#if track.duration_ms}
+										<span class="text-[10px] font-mono text-slate-400">{formatDuration(track.duration_ms)}</span>
+									{/if}
+									<div class="w-5">
+										{#if status?.status === 'downloading'}
+											<Loader2 class="w-4 h-4 animate-spin text-violet-500" />
+										{:else if status?.status === 'success'}
+											<Check class="w-4 h-4 text-emerald-500" />
+										{:else if status?.status === 'error'}
+											<X class="w-4 h-4 text-red-500" />
+										{/if}
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
+
+				<!-- Reset Button -->
+				<button
+					onclick={reset}
+					class="mt-4 w-full py-2 text-xs font-bold text-violet-500 border-2 border-violet-200 rounded hover:border-violet-400 hover:bg-violet-50 transition-all"
+				>
+					START OVER
+				</button>
+
+			{:else if !loading}
+				<!-- Empty State -->
+				<div class="text-center py-8">
+					<div class="w-20 h-20 mx-auto mb-4 rounded-lg border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-sky-50 flex items-center justify-center shadow-[3px_3px_0px_0px_#c4b5fd]">
+						<Sparkles class="w-8 h-8 text-violet-400" />
+					</div>
+					<h2 class="font-bold text-slate-700 mb-1">Paste a URL to start</h2>
+					<p class="text-xs text-slate-500 mb-4">
+						Supports Spotify & Deezer tracks, albums, playlists
+					</p>
+					<div class="flex flex-wrap justify-center gap-2">
+						<span class="px-3 py-1 text-[10px] font-bold bg-gradient-to-r from-violet-100 to-sky-100 text-violet-600 rounded-full border border-violet-200">TIDAL</span>
+						<span class="px-3 py-1 text-[10px] font-bold bg-gradient-to-r from-violet-100 to-sky-100 text-violet-600 rounded-full border border-violet-200">QOBUZ</span>
+						<span class="px-3 py-1 text-[10px] font-bold bg-gradient-to-r from-violet-100 to-sky-100 text-violet-600 rounded-full border border-violet-200">AMAZON</span>
 					</div>
 				</div>
 			{/if}
+		</div>
 
-			<!-- Reset Button -->
-			<button
-				onclick={reset}
-				class="mt-4 w-full rounded-lg border border-zinc-800 py-2 text-sm text-zinc-400 transition-colors hover:border-zinc-700 hover:text-zinc-300"
-			>
-				Start Over
-			</button>
-
-		{:else if !loading}
-			<!-- Empty State -->
-			<div class="py-16 text-center">
-				<div class="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-zinc-900">
-					<Music class="h-12 w-12 text-zinc-700" />
+		<!-- Footer -->
+		<div class="border-t-2 border-violet-200 px-6 py-3 flex justify-between items-center text-[10px] font-bold text-violet-400 uppercase tracking-wider bg-gradient-to-r from-violet-50/50 to-sky-50/50">
+			<div class="flex items-center gap-2">
+				<div class="relative">
+					<div class="w-2 h-2 rounded-full bg-emerald-500 animate-ping absolute"></div>
+					<div class="w-2 h-2 rounded-full bg-emerald-500 relative"></div>
 				</div>
-				<h2 class="text-xl font-semibold text-white">Paste a URL to get started</h2>
-				<p class="mt-2 text-zinc-500">
-					Supports Spotify and Deezer tracks, albums, and playlists
-				</p>
-				<div class="mt-6 flex flex-wrap justify-center gap-2">
-					<span class="rounded-full bg-zinc-900 px-3 py-1 text-xs text-zinc-500">Tidal</span>
-					<span class="rounded-full bg-zinc-900 px-3 py-1 text-xs text-zinc-500">Qobuz</span>
-					<span class="rounded-full bg-zinc-900 px-3 py-1 text-xs text-zinc-500">Amazon Music</span>
-				</div>
+				<span class="font-mono">v1.0</span>
 			</div>
-		{/if}
-	</main>
+			<span class="italic">FLAC Downloader</span>
+		</div>
+	</div>
 </div>
