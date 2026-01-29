@@ -1,6 +1,5 @@
 <script lang="ts">
 	import '../app.css';
-	import Navbar from '$lib/components/Navbar.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import { toasts } from '$lib/stores/toasts';
 
@@ -12,22 +11,10 @@
 	<meta name="description" content="Download high-quality FLAC music from Spotify and Deezer links" />
 </svelte:head>
 
-<div class="flex min-h-screen flex-col">
-	<div class="hidden md:block">
-		<Navbar />
-	</div>
-
-	<main class="flex-1 pb-20 md:pb-0">
-		{@render children()}
-	</main>
-
-	<div class="md:hidden">
-		<Navbar />
-	</div>
-</div>
+{@render children()}
 
 <!-- Toast Container -->
-<div class="fixed bottom-24 left-4 right-4 z-50 flex flex-col gap-2 md:bottom-4 md:left-auto md:right-4 md:w-96">
+<div class="fixed bottom-4 left-4 right-4 z-50 flex flex-col gap-2 sm:left-auto sm:right-4 sm:w-96">
 	{#each $toasts as toast (toast.id)}
 		<Toast
 			message={toast.message}
