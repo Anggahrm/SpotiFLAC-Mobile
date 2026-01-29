@@ -10,7 +10,7 @@
 		type TrackMetadata
 	} from '$lib/api';
 	import { toasts } from '$lib/stores/toasts';
-	import { Download, Loader2, Music, Disc3, ListMusic, Check, X, ChevronDown, Terminal, Sparkles, Search } from 'lucide-svelte';
+	import { Download, Loader2, Music, Disc3, ListMusic, Check, X, Terminal } from 'lucide-svelte';
 
 	type Provider = 'auto' | 'tidal' | 'qobuz' | 'amazon';
 	type SearchSource = 'spotify' | 'deezer';
@@ -21,8 +21,8 @@
 	let loading = $state(false);
 	let provider: Provider = $state('auto');
 	let searchSource: SearchSource = $state('deezer');
-	let showProviderMenu = $state(false);
 	let isSearchMode = $state(false);
+	let debounceTimer: ReturnType<typeof setTimeout> | null = $state(null);
 
 	// Download states
 	let downloading = $state(false);
@@ -41,20 +41,38 @@
 		return str.includes('spotify.com') || str.includes('deezer.com') || str.startsWith('http');
 	}
 
-	async function handleSubmit(e: Event) {
-		e.preventDefault();
+	// Auto search/fetch on input change with debounce
+	function handleInput() {
 		const trimmed = query.trim();
-		if (!trimmed) return;
 
+		// Clear previous timer
+		if (debounceTimer) {
+			clearTimeout(debounceTimer);
+		}
+
+		// Don't search if empty or too short
+		if (!trimmed || trimmed.length < 2) {
+			if (!isUrl(trimmed)) {
+				searchResults = [];
+				isSearchMode = false;
+			}
+			return;
+		}
+
+		// For URLs, fetch immediately
 		if (isUrl(trimmed)) {
 			isSearchMode = false;
 			searchResults = [];
-			await fetchMetadata();
-		} else {
-			isSearchMode = true;
-			metadata = null;
-			await handleSearch();
+			fetchMetadata();
+			return;
 		}
+
+		// For search queries, debounce 500ms
+		isSearchMode = true;
+		metadata = null;
+		debounceTimer = setTimeout(() => {
+			handleSearch();
+		}, 500);
 	}
 
 	async function handleSearch() {
@@ -263,19 +281,22 @@
 		searchResults = [];
 		downloadResults = new Map();
 		isSearchMode = false;
+		if (debounceTimer) {
+			clearTimeout(debounceTimer);
+		}
 	}
 </script>
 
-<div class="min-h-screen font-mono selection:bg-violet-500 selection:text-white bg-gradient-to-b from-slate-50 to-white relative overflow-hidden flex flex-col">
+<div class="min-h-screen flex items-center justify-center font-mono p-2 sm:p-4 selection:bg-violet-500 selection:text-white bg-gradient-to-b from-slate-50 to-white relative overflow-hidden">
 	<!-- Gradient blobs - hidden on mobile for performance -->
 	<div class="hidden sm:block fixed bottom-0 left-0 w-[400px] h-[400px] bg-gradient-to-tr from-sky-400/20 to-violet-500/20 blur-[100px] rounded-full pointer-events-none -z-10 translate-y-1/3 -translate-x-1/4"></div>
 	<div class="hidden sm:block fixed top-0 right-0 w-[300px] h-[300px] bg-gradient-to-bl from-violet-300/20 to-sky-400/20 blur-[80px] rounded-full pointer-events-none -z-10 -translate-y-1/3 translate-x-1/4"></div>
 
-	<!-- Main Container - Full Screen -->
-	<div class="flex-1 flex flex-col bg-white/80 backdrop-blur-sm">
+	<!-- Main Card -->
+	<div class="bg-white border-2 border-violet-500 shadow-[4px_4px_0px_0px_#c4b5fd] max-w-lg w-full relative group transition-all duration-300 hover:shadow-[6px_6px_0px_0px_#8b5cf6] rounded-lg overflow-hidden sm:my-4">
 
 		<!-- Terminal Header -->
-		<div class="bg-gradient-to-r from-violet-500 to-sky-500 text-white px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center border-b-2 border-violet-500 sticky top-0 z-10">
+		<div class="bg-gradient-to-r from-violet-500 to-sky-500 text-white px-3 sm:px-4 py-2.5 sm:py-3 flex justify-between items-center border-b-2 border-violet-500">
 			<div class="flex gap-2">
 				<div class="w-3 h-3 rounded-full bg-red-400 border border-white/30"></div>
 				<div class="w-3 h-3 rounded-full bg-yellow-400 border border-white/30"></div>
@@ -287,7 +308,7 @@
 			</div>
 		</div>
 
-		<div class="flex-1 overflow-y-auto p-4 sm:p-6 max-w-2xl mx-auto w-full">
+		<div class="p-4 sm:p-6">
 			<!-- Provider Selector -->
 			<div class="grid grid-cols-4 gap-1.5 sm:gap-2 mb-3 sm:mb-4">
 				{#each providers as p}
@@ -323,29 +344,22 @@
 			</div>
 
 			<!-- URL/Search Input -->
-			<form onsubmit={handleSubmit} class="mb-3 sm:mb-4">
+			<div class="mb-3 sm:mb-4">
 				<div class="relative">
 					<input
 						type="text"
-						placeholder="URL or song name..."
-						class="w-full h-11 sm:h-12 px-3 sm:px-4 pr-16 sm:pr-20 text-xs sm:text-sm border-2 border-violet-300 bg-gradient-to-r from-violet-50/50 to-sky-50/50 rounded-lg outline-none transition-all focus:border-violet-500 focus:shadow-[0_0_10px_rgba(139,92,246,0.2)] placeholder:text-slate-400"
+						placeholder="Paste URL or type song name..."
+						class="w-full h-11 sm:h-12 px-3 sm:px-4 text-xs sm:text-sm border-2 border-violet-300 bg-gradient-to-r from-violet-50/50 to-sky-50/50 rounded-lg outline-none transition-all focus:border-violet-500 focus:shadow-[0_0_10px_rgba(139,92,246,0.2)] placeholder:text-slate-400"
 						bind:value={query}
+						oninput={handleInput}
 					/>
-					<button
-						type="submit"
-						disabled={loading || !query.trim()}
-						class="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 px-3 sm:px-4 py-1.5 text-[10px] sm:text-xs font-bold bg-gradient-to-r from-violet-500 to-sky-500 text-white border-2 border-violet-500 rounded shadow-[2px_2px_0px_0px_#c4b5fd] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-[2px_2px_0px_0px_#c4b5fd] disabled:hover:translate-x-0 disabled:hover:translate-y-0"
-					>
-						{#if loading}
-							<Loader2 class="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
-						{:else if isUrl(query.trim())}
-							GO
-						{:else}
-							<Search class="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-						{/if}
-					</button>
+					{#if loading}
+						<div class="absolute right-3 top-1/2 -translate-y-1/2">
+							<Loader2 class="w-4 h-4 animate-spin text-violet-500" />
+						</div>
+					{/if}
 				</div>
-			</form>
+			</div>
 
 			<!-- Search Results -->
 			{#if searchResults.length > 0}
@@ -353,7 +367,7 @@
 					<div class="px-3 sm:px-4 py-2 border-b-2 border-violet-200 bg-gradient-to-r from-violet-100/50 to-sky-100/50">
 						<span class="text-[10px] sm:text-xs font-bold text-violet-600">RESULTS ({searchResults.length})</span>
 					</div>
-					<div class="max-h-60 sm:max-h-96 overflow-y-auto">
+					<div class="max-h-64 sm:max-h-80 overflow-y-auto">
 						{#each searchResults as track, i}
 							<button
 								class="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-violet-100 last:border-b-0 hover:bg-violet-50/70 active:bg-violet-100/70 transition-colors text-left"
@@ -510,7 +524,7 @@
 						</div>
 
 						<!-- Track List -->
-						<div class="border-t-2 border-violet-200 max-h-60 sm:max-h-[50vh] overflow-y-auto">
+						<div class="border-t-2 border-violet-200 max-h-48 sm:max-h-64 overflow-y-auto">
 							{#each album.tracks as track, i}
 								{@const status = getTrackStatus(track)}
 								<div class="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 border-b border-violet-100 last:border-b-0 hover:bg-violet-50/50 transition-colors">
@@ -604,7 +618,7 @@
 						</div>
 
 						<!-- Track List -->
-						<div class="border-t-2 border-violet-200 max-h-60 sm:max-h-[50vh] overflow-y-auto">
+						<div class="border-t-2 border-violet-200 max-h-48 sm:max-h-64 overflow-y-auto">
 							{#each playlist.tracks as track, i}
 								{@const status = getTrackStatus(track)}
 								<div class="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 border-b border-violet-100 last:border-b-0 hover:bg-violet-50/50 transition-colors">
@@ -646,31 +660,22 @@
 					START OVER
 				</button>
 
-			{:else if !loading}
-				<!-- Empty State -->
-				<div class="text-center py-6 sm:py-8">
-					<div class="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3 sm:mb-4 rounded-lg border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-sky-50 flex items-center justify-center shadow-[3px_3px_0px_0px_#c4b5fd]">
-						<Sparkles class="w-6 h-6 sm:w-8 sm:h-8 text-violet-400" />
-					</div>
-					<h2 class="font-bold text-sm sm:text-base text-slate-700 mb-1">Search or paste URL</h2>
-					<p class="text-[10px] sm:text-xs text-slate-500 mb-3 sm:mb-4">
-						Search by song/artist or paste Spotify/Deezer URL
+			{:else if !loading && searchResults.length === 0}
+				<!-- Minimal hint when nothing shown -->
+				<div class="text-center py-4">
+					<p class="text-[10px] sm:text-xs text-slate-400">
+						Supports Tidal, Qobuz, Amazon
 					</p>
-					<div class="flex flex-wrap justify-center gap-1.5 sm:gap-2">
-						<span class="px-2 sm:px-3 py-0.5 sm:py-1 text-[8px] sm:text-[10px] font-bold bg-gradient-to-r from-violet-100 to-sky-100 text-violet-600 rounded-full border border-violet-200">TIDAL</span>
-						<span class="px-2 sm:px-3 py-0.5 sm:py-1 text-[8px] sm:text-[10px] font-bold bg-gradient-to-r from-violet-100 to-sky-100 text-violet-600 rounded-full border border-violet-200">QOBUZ</span>
-						<span class="px-2 sm:px-3 py-0.5 sm:py-1 text-[8px] sm:text-[10px] font-bold bg-gradient-to-r from-violet-100 to-sky-100 text-violet-600 rounded-full border border-violet-200">AMAZON</span>
-					</div>
 				</div>
 			{/if}
 		</div>
 
 		<!-- Footer -->
-		<div class="border-t-2 border-violet-200 px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center text-[10px] sm:text-xs font-bold text-violet-400 uppercase tracking-wider bg-gradient-to-r from-violet-50/50 to-sky-50/50 sticky bottom-0">
-			<div class="flex items-center gap-2">
+		<div class="border-t-2 border-violet-200 px-4 sm:px-6 py-2 sm:py-3 flex justify-between items-center text-[8px] sm:text-[10px] font-bold text-violet-400 uppercase tracking-wider bg-gradient-to-r from-violet-50/50 to-sky-50/50">
+			<div class="flex items-center gap-1.5 sm:gap-2">
 				<div class="relative">
-					<div class="w-2 h-2 rounded-full bg-emerald-500 animate-ping absolute"></div>
-					<div class="w-2 h-2 rounded-full bg-emerald-500 relative"></div>
+					<div class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 animate-ping absolute"></div>
+					<div class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 relative"></div>
 				</div>
 				<span class="font-mono">v1.0</span>
 			</div>
