@@ -1,12 +1,12 @@
 {
-  "name": "SpotiFLAC Bot",
-  "description": "Telegram bot for downloading high-quality FLAC music",
+  "name": "zFlac Downloader",
+  "description": "Telegram bot and web interface for downloading high-quality FLAC music",
   "repository": "https://github.com/Anggahrm/SpotiFLAC-Mobile",
-  "keywords": ["telegram", "bot", "music", "flac", "tidal", "qobuz"],
+  "keywords": ["telegram", "bot", "music", "flac", "tidal", "qobuz", "web"],
   "env": {
     "TELEGRAM_BOT_TOKEN": {
-      "description": "Your Telegram bot token from @BotFather",
-      "required": true
+      "description": "Your Telegram bot token from @BotFather (optional if only using web)",
+      "required": false
     },
     "SPOTIFY_CLIENT_ID": {
       "description": "Spotify API client ID (optional)",
@@ -24,7 +24,13 @@
   },
   "buildpacks": [
     {
+      "url": "heroku/nodejs"
+    },
+    {
       "url": "heroku/go"
     }
-  ]
+  ],
+  "scripts": {
+    "postdeploy": "echo 'Deployment complete'"
+  }
 }

@@ -1,8 +1,15 @@
-# SpotiFLAC Bot
+# zFlac Downloader
 
-A Telegram bot and REST API for downloading high-quality FLAC/M4A music from Tidal, Qobuz, and Amazon Music using Spotify or Deezer links.
+A Telegram bot, REST API, and **web interface** for downloading high-quality FLAC/M4A music from Tidal, Qobuz, and Amazon Music using Spotify or Deezer links.
 
 ## Features
+
+### Web Interface
+- Modern SvelteKit web UI for downloading music
+- Paste Spotify/Deezer URLs to download
+- Search for tracks by name
+- Download history with localStorage persistence
+- Quality selection: FLAC (Lossless) / M4A (AAC)
 
 ### Audio Quality
 - Always downloads the **highest quality** available from each provider
@@ -82,10 +89,27 @@ git push heroku main
 # Set environment variables
 export TELEGRAM_BOT_TOKEN="your_token"
 
-# Build and run
+# Build web frontend first
+cd web && npm install && npm run build && cd ..
+
+# Build and run Go backend
 go build -o spotiflac-bot .
 ./spotiflac-bot
 ```
+
+The web interface will be available at `http://localhost:8080`
+
+### Development
+
+```bash
+# Terminal 1: Run Go backend
+go run main.go
+
+# Terminal 2: Run web frontend with hot reload
+cd web && npm run dev
+```
+
+Web dev server runs on port 5173, API on port 8080.
 
 ### Docker
 
@@ -203,11 +227,18 @@ curl "http://localhost:8080/api/lyrics?track_name=Wildflower&artist_name=Billie%
 ├── main.go              # Entry point
 ├── Procfile             # Heroku process file
 ├── go.mod               # Go module
+├── Dockerfile           # Multi-stage build (web + Go)
 ├── pkg/
-│   ├── api/             # REST API server
+│   ├── api/             # REST API server (serves web frontend)
 │   ├── bot/             # Telegram bot
 │   ├── backend/         # Download core
 │   └── config/          # Configuration
+├── web/                 # SvelteKit web frontend
+│   ├── src/
+│   │   ├── routes/      # Pages (home, search, history)
+│   │   └── lib/         # Components, stores, API client
+│   └── package.json
+├── static/              # Built web assets (gitignored)
 └── README.md
 ```
 

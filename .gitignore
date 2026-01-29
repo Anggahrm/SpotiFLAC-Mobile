@@ -25,3 +25,11 @@ spotiflac-bot
 
 # Download directory
 downloads/
+
+# Static build output (generated from web/)
+static/
+
+# Node.js
+web/node_modules/
+web/.svelte-kit/
+

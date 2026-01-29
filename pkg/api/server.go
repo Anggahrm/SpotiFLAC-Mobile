@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -41,6 +43,20 @@ func writeSuccess(w http.ResponseWriter, data interface{}) {
 	writeJSON(w, http.StatusOK, APIResponse{Success: true, Data: data})
 }
 
+// corsMiddleware adds CORS headers to responses
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // Start starts the API server
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
@@ -62,11 +78,30 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/download", s.downloadHandler)
 	mux.HandleFunc("/api/progress", s.progressHandler)
 
+	// File download endpoint
+	mux.HandleFunc("/api/files/", s.fileDownloadHandler)
+
 	// Lyrics
 	mux.HandleFunc("/api/lyrics", s.lyricsHandler)
 
+	// Static file server for web frontend
+	staticDir := "static"
+	if _, err := os.Stat(staticDir); err == nil {
+		fs := http.FileServer(http.Dir(staticDir))
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			// Check if the requested file exists
+			path := filepath.Join(staticDir, r.URL.Path)
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				// Serve index.html for SPA routing
+				http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
+				return
+			}
+			fs.ServeHTTP(w, r)
+		})
+	}
+
 	fmt.Printf("API server starting on port %s\n", s.port)
-	return http.ListenAndServe(":"+s.port, mux)
+	return http.ListenAndServe(":"+s.port, corsMiddleware(mux))
 }
 
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -386,4 +421,32 @@ func (s *Server) lyricsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeSuccess(w, data)
+}
+
+func (s *Server) fileDownloadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	filename := strings.TrimPrefix(r.URL.Path, "/api/files/")
+	if filename == "" {
+		writeError(w, http.StatusBadRequest, "Filename is required")
+		return
+	}
+
+	// Sanitize filename to prevent directory traversal
+	filename = filepath.Base(filename)
+	filePath := filepath.Join("/tmp/spotiflac_downloads", filename)
+
+	// Check if file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		writeError(w, http.StatusNotFound, "File not found")
+		return
+	}
+
+	// Set headers for file download
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeFile(w, r, filePath)
 }

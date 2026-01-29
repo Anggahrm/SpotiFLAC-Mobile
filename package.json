@@ -1,0 +1,13 @@
+{
+  "name": "zflac-downloader",
+  "version": "1.0.0",
+  "description": "Web frontend build for zFlac Downloader",
+  "private": true,
+  "scripts": {
+    "build": "cd web && npm ci && npm run build",
+    "heroku-postbuild": "cd web && npm ci && npm run build"
+  },
+  "engines": {
+    "node": "20.x"
+  }
+}
