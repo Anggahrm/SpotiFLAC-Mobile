@@ -81,12 +81,33 @@
 	}
 
 	async function selectTrack(track: TrackMetadata) {
-		metadata = {
-			type: 'track',
-			track
-		};
-		searchResults = [];
-		isSearchMode = false;
+		// If track has spotify_id, fetch full metadata to get ISRC
+		if (track.spotify_id && !track.isrc) {
+			loading = true;
+			searchResults = [];
+			isSearchMode = false;
+			try {
+				const url = `https://open.spotify.com/track/${track.spotify_id}`;
+				metadata = await getMetadata(url);
+				toasts.success('Track loaded!');
+			} catch (err) {
+				// Fallback to search result data if metadata fetch fails
+				metadata = {
+					type: 'track',
+					track
+				};
+				toasts.error('Using limited track info');
+			} finally {
+				loading = false;
+			}
+		} else {
+			metadata = {
+				type: 'track',
+				track
+			};
+			searchResults = [];
+			isSearchMode = false;
+		}
 	}
 
 	async function fetchMetadata() {
