@@ -266,16 +266,16 @@
 	}
 </script>
 
-<div class="min-h-screen flex items-center justify-center font-mono p-2 sm:p-4 selection:bg-violet-500 selection:text-white bg-gradient-to-b from-slate-50 to-white relative overflow-hidden">
+<div class="min-h-screen font-mono selection:bg-violet-500 selection:text-white bg-gradient-to-b from-slate-50 to-white relative overflow-hidden flex flex-col">
 	<!-- Gradient blobs - hidden on mobile for performance -->
 	<div class="hidden sm:block fixed bottom-0 left-0 w-[400px] h-[400px] bg-gradient-to-tr from-sky-400/20 to-violet-500/20 blur-[100px] rounded-full pointer-events-none -z-10 translate-y-1/3 -translate-x-1/4"></div>
 	<div class="hidden sm:block fixed top-0 right-0 w-[300px] h-[300px] bg-gradient-to-bl from-violet-300/20 to-sky-400/20 blur-[80px] rounded-full pointer-events-none -z-10 -translate-y-1/3 translate-x-1/4"></div>
 
-	<!-- Main Card -->
-	<div class="bg-white border-2 border-violet-500 shadow-[4px_4px_0px_0px_#c4b5fd] max-w-lg w-full relative group transition-all duration-300 hover:shadow-[6px_6px_0px_0px_#8b5cf6] rounded-lg overflow-hidden sm:my-4">
+	<!-- Main Container - Full Screen -->
+	<div class="flex-1 flex flex-col bg-white/80 backdrop-blur-sm">
 
 		<!-- Terminal Header -->
-		<div class="bg-gradient-to-r from-violet-500 to-sky-500 text-white px-3 sm:px-4 py-2.5 sm:py-3 flex justify-between items-center border-b-2 border-violet-500">
+		<div class="bg-gradient-to-r from-violet-500 to-sky-500 text-white px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center border-b-2 border-violet-500 sticky top-0 z-10">
 			<div class="flex gap-2">
 				<div class="w-3 h-3 rounded-full bg-red-400 border border-white/30"></div>
 				<div class="w-3 h-3 rounded-full bg-yellow-400 border border-white/30"></div>
@@ -287,7 +287,7 @@
 			</div>
 		</div>
 
-		<div class="p-4 sm:p-6">
+		<div class="flex-1 overflow-y-auto p-4 sm:p-6 max-w-2xl mx-auto w-full">
 			<!-- Provider Selector -->
 			<div class="grid grid-cols-4 gap-1.5 sm:gap-2 mb-3 sm:mb-4">
 				{#each providers as p}
@@ -353,7 +353,7 @@
 					<div class="px-3 sm:px-4 py-2 border-b-2 border-violet-200 bg-gradient-to-r from-violet-100/50 to-sky-100/50">
 						<span class="text-[10px] sm:text-xs font-bold text-violet-600">RESULTS ({searchResults.length})</span>
 					</div>
-					<div class="max-h-64 sm:max-h-80 overflow-y-auto">
+					<div class="max-h-60 sm:max-h-96 overflow-y-auto">
 						{#each searchResults as track, i}
 							<button
 								class="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-violet-100 last:border-b-0 hover:bg-violet-50/70 active:bg-violet-100/70 transition-colors text-left"
@@ -510,7 +510,7 @@
 						</div>
 
 						<!-- Track List -->
-						<div class="border-t-2 border-violet-200 max-h-48 sm:max-h-64 overflow-y-auto">
+						<div class="border-t-2 border-violet-200 max-h-60 sm:max-h-[50vh] overflow-y-auto">
 							{#each album.tracks as track, i}
 								{@const status = getTrackStatus(track)}
 								<div class="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 border-b border-violet-100 last:border-b-0 hover:bg-violet-50/50 transition-colors">
@@ -604,7 +604,7 @@
 						</div>
 
 						<!-- Track List -->
-						<div class="border-t-2 border-violet-200 max-h-48 sm:max-h-64 overflow-y-auto">
+						<div class="border-t-2 border-violet-200 max-h-60 sm:max-h-[50vh] overflow-y-auto">
 							{#each playlist.tracks as track, i}
 								{@const status = getTrackStatus(track)}
 								<div class="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 border-b border-violet-100 last:border-b-0 hover:bg-violet-50/50 transition-colors">
@@ -666,11 +666,11 @@
 		</div>
 
 		<!-- Footer -->
-		<div class="border-t-2 border-violet-200 px-4 sm:px-6 py-2 sm:py-3 flex justify-between items-center text-[8px] sm:text-[10px] font-bold text-violet-400 uppercase tracking-wider bg-gradient-to-r from-violet-50/50 to-sky-50/50">
-			<div class="flex items-center gap-1.5 sm:gap-2">
+		<div class="border-t-2 border-violet-200 px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center text-[10px] sm:text-xs font-bold text-violet-400 uppercase tracking-wider bg-gradient-to-r from-violet-50/50 to-sky-50/50 sticky bottom-0">
+			<div class="flex items-center gap-2">
 				<div class="relative">
-					<div class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 animate-ping absolute"></div>
-					<div class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 relative"></div>
+					<div class="w-2 h-2 rounded-full bg-emerald-500 animate-ping absolute"></div>
+					<div class="w-2 h-2 rounded-full bg-emerald-500 relative"></div>
 				</div>
 				<span class="font-mono">v1.0</span>
 			</div>
