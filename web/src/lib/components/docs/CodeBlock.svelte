@@ -20,6 +20,8 @@
 		{ id: 'python', label: 'Python' }
 	];
 
+	const tabListId = $derived(`code-tabs-${endpoint.id}`);
+
 	const code = $derived.by(() => {
 		switch (activeTab) {
 			case 'curl':
@@ -44,13 +46,15 @@
 	}
 </script>
 
-<div class="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--card)]">
-	<!-- Tabs -->
-	<div class="flex border-b border-[var(--border)] bg-[var(--secondary)]">
+<div class="glass-card border rounded-lg overflow-hidden bg-[var(--card)]">
+	<div class="flex flex-wrap items-center gap-1 border-b border-[var(--border)] bg-[var(--secondary)] p-1" role="tablist" aria-label="Code examples" id={tabListId}>
 		{#each tabs as tab}
 			<button
-				class="px-3 py-2 text-xs font-medium transition-colors {activeTab === tab.id
-					? 'text-[var(--foreground)] bg-[var(--card)] border-b-2 border-[var(--foreground)]'
+				role="tab"
+				aria-selected={activeTab === tab.id}
+				aria-controls={`code-panel-${endpoint.id}-${tab.id}`}
+				class="rounded-md px-3 py-1.5 text-xs font-medium transition-all {activeTab === tab.id
+					? 'bg-[var(--card)] text-[var(--foreground)] border border-[var(--border-glow)] shadow-[0_0_0_1px_var(--border-glow)]'
 					: 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'}"
 				onclick={() => (activeTab = tab.id)}
 			>
@@ -60,7 +64,7 @@
 		<div class="flex-1"></div>
 		<button
 			onclick={copyCode}
-			class="px-3 py-2 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors flex items-center gap-1"
+			class="rounded-md px-2.5 py-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors flex items-center gap-1"
 		>
 			{#if copied}
 				<Check class="w-3.5 h-3.5 text-emerald-500" />
@@ -72,6 +76,7 @@
 		</button>
 	</div>
 
-	<!-- Code -->
-	<pre class="p-4 text-xs overflow-x-auto"><code class="text-[var(--foreground)]">{code}</code></pre>
+	<div id={`code-panel-${endpoint.id}-${activeTab}`} role="tabpanel" aria-labelledby={tabListId}>
+		<pre class="p-3 sm:p-4 text-xs overflow-x-auto"><code class="text-[var(--foreground)]">{code}</code></pre>
+	</div>
 </div>

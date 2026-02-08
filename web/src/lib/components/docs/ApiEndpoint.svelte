@@ -10,15 +10,16 @@
 
 	let { endpoint }: Props = $props();
 	let expanded = $state(false);
+
+	const contentId = $derived(`endpoint-content-${endpoint.id}`);
 </script>
 
-<div class="border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--card)]">
-	<!-- Header -->
+<div class="glass-card border rounded-xl overflow-hidden bg-[var(--card)]">
 	<button
 		onclick={() => (expanded = !expanded)}
 		aria-expanded={expanded}
-		aria-controls="endpoint-content-{endpoint.id}"
-		class="w-full flex items-center gap-3 p-4 text-left hover:bg-[var(--secondary)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-inset"
+		aria-controls={contentId}
+		class="w-full flex items-center gap-2 sm:gap-3 p-3 sm:p-4 text-left transition-all focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-inset {expanded ? 'bg-[var(--secondary)]/75' : 'hover:bg-[var(--secondary)]/55'}"
 	>
 		<span
 			class="px-2 py-1 text-[10px] font-bold rounded {endpoint.method === 'GET'
@@ -27,25 +28,23 @@
 		>
 			{endpoint.method}
 		</span>
-		<code class="text-sm font-mono text-[var(--foreground)]">{endpoint.path}</code>
-		<span class="flex-1 text-sm text-[var(--muted-foreground)] truncate">{endpoint.title}</span>
+		<code class="text-xs sm:text-sm font-mono text-[var(--foreground)] truncate max-w-[38%] sm:max-w-none">{endpoint.path}</code>
+		<span class="flex-1 text-xs sm:text-sm text-[var(--muted-foreground)] truncate">{endpoint.title}</span>
+		<span class="rounded-full border border-[var(--border)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--muted-foreground)]">{expanded ? 'Open' : 'Closed'}</span>
 		{#if expanded}
-			<ChevronUp class="w-4 h-4 text-[var(--muted-foreground)]" />
+			<ChevronUp class="w-4 h-4 text-[var(--primary)] transition-transform" />
 		{:else}
-			<ChevronDown class="w-4 h-4 text-[var(--muted-foreground)]" />
+			<ChevronDown class="w-4 h-4 text-[var(--muted-foreground)] transition-transform" />
 		{/if}
 	</button>
 
-	<!-- Content -->
 	{#if expanded}
-		<div id="endpoint-content-{endpoint.id}" role="region" class="border-t border-[var(--border)] p-4 space-y-6">
-			<!-- Description -->
+		<div id={contentId} role="region" class="border-t border-[var(--border)] p-3 sm:p-4 space-y-5 fade-up">
 			<p class="text-sm text-[var(--muted-foreground)]">{endpoint.description}</p>
 
-			<!-- Parameters -->
 			{#if endpoint.parameters?.length}
 				<div>
-					<h4 class="text-xs font-medium text-[var(--foreground)] mb-3">Parameters</h4>
+					<h4 class="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--foreground)] mb-3">Parameters</h4>
 					<div class="border border-[var(--border)] rounded-md overflow-hidden">
 						<table class="w-full text-xs">
 							<thead>
@@ -77,28 +76,24 @@
 				</div>
 			{/if}
 
-			<!-- Request Body -->
 			{#if endpoint.requestBody}
 				<div>
-					<h4 class="text-xs font-medium text-[var(--foreground)] mb-3">Request Body</h4>
+					<h4 class="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--foreground)] mb-3">Request Body</h4>
 					<p class="text-xs text-[var(--muted-foreground)] mb-2">{endpoint.requestBody.description}</p>
 					<pre class="p-3 text-xs bg-[var(--secondary)] rounded-md overflow-x-auto border border-[var(--border)]"><code class="text-[var(--foreground)]">{JSON.stringify(endpoint.requestBody.example, null, 2)}</code></pre>
 				</div>
 			{/if}
 
-			<!-- Response Example -->
 			<div>
-				<h4 class="text-xs font-medium text-[var(--foreground)] mb-3">Response Example</h4>
+				<h4 class="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--foreground)] mb-3">Response Example</h4>
 				<pre class="p-3 text-xs bg-[var(--secondary)] rounded-md overflow-x-auto border border-[var(--border)]"><code class="text-[var(--foreground)]">{JSON.stringify(endpoint.responseExample, null, 2)}</code></pre>
 			</div>
 
-			<!-- Code Examples -->
 			<div>
-				<h4 class="text-xs font-medium text-[var(--foreground)] mb-3">Code Examples</h4>
+				<h4 class="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--foreground)] mb-3">Code Examples</h4>
 				<CodeBlock {endpoint} />
 			</div>
 
-			<!-- Playground -->
 			<div>
 				<Playground {endpoint} />
 			</div>
