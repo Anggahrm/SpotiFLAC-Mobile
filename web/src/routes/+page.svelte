@@ -191,7 +191,7 @@
 				const isDeezerTrack = trackData.spotify_id?.startsWith('deezer:');
 				const deezerId = isDeezerTrack ? trackData.spotify_id?.replace('deezer:', '') : undefined;
 				const spotifyId = isDeezerTrack ? undefined : trackData.spotify_id;
-				
+
 				const avail = await checkAvailability(spotifyId, trackData.isrc, deezerId);
 				if (avail.tidal) service = 'tidal';
 				else if (avail.qobuz) service = 'qobuz';
@@ -299,25 +299,25 @@
 	function getInputHint() {
 		const trimmed = query.trim();
 		if (loading) {
-			return isUrl(trimmed) ? 'Resolving link and fetching metadata…' : `Searching ${searchSource} catalog…`;
+			return isUrl(trimmed) ? 'Resolving link...' : `Searching ${searchSource}...`;
 		}
 		if (!trimmed) {
-			return 'Paste a Spotify/Deezer URL or type a song title to start.';
+			return 'Paste a Spotify or Deezer URL, or type a song name';
 		}
 		if (isUrl(trimmed)) {
-			return 'URL detected. Metadata is fetched automatically.';
+			return 'URL detected — fetching metadata';
 		}
 		if (trimmed.length < 2) {
-			return 'Keep typing at least 2 characters to run search.';
+			return 'Type at least 2 characters to search';
 		}
-		return `Search mode active on ${searchSource}.`;
+		return `Searching on ${searchSource}`;
 	}
 
 	function getInputBadge() {
 		const trimmed = query.trim();
-		if (!trimmed) return 'IDLE';
-		if (loading) return 'LIVE';
-		return isUrl(trimmed) ? 'URL' : 'SEARCH';
+		if (!trimmed) return 'Ready';
+		if (loading) return 'Loading';
+		return isUrl(trimmed) ? 'URL' : 'Search';
 	}
 
 	function getInputIconMode() {
@@ -330,422 +330,465 @@
 </script>
 
 <div class="relative min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-	<header class="sticky top-0 z-30 border-b border-[var(--border)] bg-[color:color-mix(in_srgb,var(--background)_78%,transparent)] backdrop-blur-xl">
-		<div class="mx-auto flex h-16 max-w-[min(1800px,96vw)] items-center justify-between px-4 lg:px-8">
-			<div class="flex items-center gap-3">
-				<div class="waveform" aria-hidden="true">
-					<span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
+	<!-- Elegant Header -->
+	<header class="sticky top-0 z-30 border-b border-[var(--border)] bg-[color:color-mix(in_srgb,var(--background)_85%,transparent)] backdrop-blur-2xl">
+		<div class="mx-auto flex h-20 max-w-[min(1400px,94vw)] items-center justify-between px-6 lg:px-12">
+			<div class="flex items-center gap-4">
+				<div class="flex items-center gap-3">
+					<div class="waveform" aria-hidden="true">
+						<span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
+					</div>
 				</div>
 				<div>
-					<p class="font-display text-xl leading-none text-gradient">zFlac</p>
-					<p class="font-mono text-[10px] uppercase tracking-[0.24em] text-[var(--muted-foreground)]">by anggahrm</p>
+					<p class="font-display text-2xl tracking-tight text-gradient">zFlac</p>
 				</div>
 			</div>
-			<a href="/docs" class="rounded-full border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] transition-all hover:border-[var(--border-glow)] hover:text-[var(--foreground)]">
-				API Docs
-			</a>
+			<div class="flex items-center gap-6">
+				<div class="hidden sm:flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.2em] text-[var(--muted-foreground)]">
+					<span class="relative h-1.5 w-1.5">
+						<span class="status-dot absolute"></span>
+					</span>
+					Live
+				</div>
+				<a href="/docs" class="text-xs font-medium tracking-wide text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">
+					Documentation
+				</a>
+			</div>
 		</div>
 	</header>
 
-	<main class="relative z-10 mx-auto max-w-[min(1800px,96vw)] px-4 py-8 lg:px-8">
-		<section class="mb-6 rounded-2xl glass-card p-4 sm:p-6 fade-up">
-			<div class="flex items-start justify-between gap-4">
-				<div>
-					<p class="mb-2 inline-flex items-center gap-1 rounded-full border border-[var(--border)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
-						<Sparkles class="h-3 w-3" /> High-Fidelity Downloader
-					</p>
-					<h1 class="font-display text-2xl sm:text-3xl leading-tight">Download tracks like a <span class="text-gradient">studio session</span>.</h1>
-					<p class="mt-2 max-w-2xl text-sm text-[var(--muted-foreground)]">Paste a Spotify/Deezer URL or search tracks instantly. Batch downloads keep progress visible in real time.</p>
-				</div>
-				<div class="hidden sm:flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 font-mono text-xs text-[var(--muted-foreground)]">
-					<div class="relative h-2 w-2"><span class="status-dot absolute"></span></div>
-					LIVE
-				</div>
+	<!-- Hero Section -->
+	<main class="relative z-10 mx-auto max-w-[min(1400px,94vw)] px-6 lg:px-12">
+		<!-- Hero -->
+		<section class="pt-16 pb-12 lg:pt-24 lg:pb-16">
+			<div class="max-w-2xl">
+				<p class="mb-4 font-mono text-[11px] uppercase tracking-[0.25em] text-[var(--primary)]">
+					High-Fidelity Audio
+				</p>
+				<h1 class="font-display text-4xl sm:text-5xl lg:text-6xl leading-[1.1] tracking-tight">
+					Download music in <span class="text-gradient italic">studio quality</span>
+				</h1>
+				<p class="mt-6 text-base sm:text-lg text-[var(--muted-foreground)] leading-relaxed max-w-xl">
+					Lossless FLAC downloads from Tidal, Qobuz, and Amazon. Paste a link or search directly — your music, uncompromised.
+				</p>
 			</div>
 		</section>
 
-		<div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(520px,0.85fr)]">
-			<div>
-				<p class="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--muted-foreground)]">Download Provider</p>
-				<div class="grid grid-cols-4 gap-1.5 sm:gap-2 mb-4 sm:mb-5">
-					{#each providers as p}
-						<button
-							class="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-semibold border transition-all duration-200 rounded-md {provider === p.id
-								? 'btn-primary border-transparent text-[var(--primary-foreground)]'
-								: 'btn-secondary text-[var(--muted-foreground)]'}"
-							onclick={() => provider = p.id}
-						>
-							{p.name}
-						</button>
-					{/each}
-				</div>
-
-				<p class="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-[var(--muted-foreground)]">Search Source</p>
-				<div class="grid grid-cols-2 gap-1.5 sm:gap-2 mb-4 sm:mb-5">
-					<button
-						class="px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-semibold border transition-all duration-200 rounded-md {searchSource === 'deezer'
-							? 'btn-primary border-transparent text-[var(--primary-foreground)]'
-							: 'btn-secondary text-[var(--muted-foreground)]'}"
-						onclick={() => searchSource = 'deezer'}
-					>
-						Deezer
-					</button>
-					<button
-						class="px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-semibold border transition-all duration-200 rounded-md {searchSource === 'spotify'
-							? 'btn-primary border-transparent text-[var(--primary-foreground)]'
-							: 'btn-secondary text-[var(--muted-foreground)]'}"
-						onclick={() => searchSource = 'spotify'}
-					>
-						Spotify
-					</button>
-				</div>
-
-				<div class="mb-4 sm:mb-5">
-					<div class="relative">
-						<input
-							type="text"
-							placeholder="Paste URL or type song name..."
-							class="input-glow w-full h-11 sm:h-12 px-3 sm:px-4 text-xs sm:text-sm rounded-xl outline-none placeholder:text-[var(--muted-foreground)]"
-							bind:value={query}
-							oninput={handleInput}
-						/>
-						{#if loading}
-							<div class="absolute right-3 top-1/2 -translate-y-1/2">
-								<Loader2 class="w-4 h-4 animate-spin text-[var(--primary)]" />
-							</div>
-						{/if}
-					</div>
-					<div class="mt-2 flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--secondary)]/60 px-3 py-2">
-						<div class="flex min-w-0 items-center gap-2">
-							{#if getInputIconMode() === 'loading'}
-								<Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--primary)]" />
-							{:else if getInputIconMode() === 'url'}
-								<Link2 class="h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
-							{:else if getInputIconMode() === 'search'}
-								<Search class="h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
-							{:else}
-								<Sparkles class="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)]" />
-							{/if}
-							<p class="truncate text-[11px] text-[var(--muted-foreground)]">{getInputHint()}</p>
-						</div>
-						<span class="rounded-full border border-[var(--border)] px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--muted-foreground)]">{getInputBadge()}</span>
-					</div>
-				</div>
-			</div>
-
-			<div class="space-y-4">
-				{#if searchResults.length > 0}
-					<div class="glass-card border rounded-xl overflow-hidden mb-3 sm:mb-4 fade-up">
-						<div class="px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--secondary)]">
-							<span class="font-mono text-[10px] sm:text-xs font-medium text-[var(--muted-foreground)]">RESULTS ({searchResults.length})</span>
-						</div>
-						<div class="max-h-64 sm:max-h-80 overflow-y-auto">
-							{#each searchResults as track, i}
+		<!-- Main Interface -->
+		<section class="pb-16 lg:pb-24">
+			<div class="grid gap-8 lg:grid-cols-[1fr_1.2fr] lg:gap-12">
+				<!-- Left Column: Controls -->
+				<div class="space-y-8">
+					<!-- Provider Selection -->
+					<div class="glass-card rounded-2xl p-6 lg:p-8">
+						<p class="mb-4 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--muted-foreground)]">Source Provider</p>
+						<div class="grid grid-cols-4 gap-2">
+							{#each providers as p}
 								<button
-									class="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--secondary)] transition-colors text-left"
-									onclick={() => selectTrack(track)}
+									class="px-3 py-2.5 text-[11px] font-semibold tracking-wide border transition-all duration-300 rounded-lg {provider === p.id
+										? 'btn-primary border-transparent'
+										: 'btn-secondary text-[var(--muted-foreground)]'}"
+									onclick={() => provider = p.id}
 								>
-									{#if track.cover_url}
-										<img src={track.cover_url} alt="" class="w-10 h-10 sm:w-12 sm:h-12 rounded border border-[var(--border)] object-cover" />
-									{:else}
-										<div class="w-10 h-10 sm:w-12 sm:h-12 rounded border border-[var(--border)] bg-[var(--secondary)] flex items-center justify-center">
-											<Music class="w-4 h-4 sm:w-5 sm:h-5 text-[var(--muted-foreground)]" />
-										</div>
-									{/if}
-									<div class="flex-1 min-w-0">
-										<p class="text-xs sm:text-sm font-medium text-[var(--foreground)] truncate">{track.title}</p>
-										<p class="text-[10px] sm:text-xs text-[var(--muted-foreground)] truncate">{track.artist}</p>
-									</div>
-									{#if track.duration_ms}
-										<span class="text-[10px] font-mono text-[var(--muted-foreground)] hidden sm:inline">{formatDuration(track.duration_ms)}</span>
-									{/if}
-									<Download class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--muted-foreground)] flex-shrink-0" />
+									{p.name}
 								</button>
 							{/each}
 						</div>
 					</div>
-				{/if}
 
-				{#if metadata}
-					{#if metadata.type === 'track' && metadata.track}
-						{@const track = metadata.track}
-						{@const trackStatus = getTrackStatus(track)}
-						<div class="glass-card border rounded-xl overflow-hidden fade-up">
-							<div class="flex gap-3 sm:gap-4 p-3 sm:p-4">
-								{#if track.cover_url}
-									<img
-										src={track.cover_url}
-										alt={track.title}
-										class="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 rounded border border-[var(--border)] object-cover"
-									/>
-								{:else}
-									<div class="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 rounded border border-[var(--border)] bg-[var(--secondary)] flex items-center justify-center">
-										<Music class="w-6 h-6 sm:w-8 sm:h-8 text-[var(--muted-foreground)]" />
-									</div>
-								{/if}
-
-								<div class="flex-1 min-w-0">
-									<div class="flex items-center gap-2 mb-1">
-										<span class="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[10px] font-medium bg-[var(--foreground)] text-[var(--background)] rounded-full">TRACK</span>
-									</div>
-									<h3 class="font-bold text-sm sm:text-base text-[var(--foreground)] truncate">{track.title}</h3>
-									<p class="text-xs sm:text-sm text-[var(--muted-foreground)] truncate">{track.artist}</p>
-									{#if track.album}
-										<p class="text-[10px] sm:text-xs text-[var(--muted-foreground)] truncate mt-0.5">{track.album}</p>
-									{/if}
-									<div class="flex gap-1.5 sm:gap-2 mt-1.5 sm:mt-2 flex-wrap">
-										{#if track.duration_ms}
-											<span class="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[10px] font-mono bg-[var(--secondary)] text-[var(--muted-foreground)] rounded">{formatDuration(track.duration_ms)}</span>
-										{/if}
-										{#if track.release_date}
-											<span class="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[10px] font-mono bg-[var(--secondary)] text-[var(--muted-foreground)] rounded">{track.release_date.split('-')[0]}</span>
-										{/if}
-									</div>
-								</div>
-							</div>
-
-							<div class="border-t border-[var(--border)] p-2.5 sm:p-3">
-								{#if trackStatus?.status === 'success'}
-									<a
-										href={getFileUrl(trackStatus.fileName || '')}
-										download
-										class="btn-primary flex items-center justify-center gap-2 w-full py-2 sm:py-2.5 text-xs sm:text-sm rounded-lg"
-									>
-										<Download class="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-										SAVE FILE
-									</a>
-								{:else}
-									<button
-										onclick={handleDownloadTrack}
-										disabled={downloading}
-										class="btn-primary flex items-center justify-center gap-2 w-full py-2 sm:py-2.5 text-xs sm:text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-									>
-										{#if downloading}
-											<Loader2 class="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
-											DOWNLOADING...
-										{:else}
-											<Download class="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-											DOWNLOAD FLAC
-										{/if}
-									</button>
-								{/if}
-							</div>
+					<!-- Search Source -->
+					<div class="glass-card rounded-2xl p-6 lg:p-8">
+						<p class="mb-4 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--muted-foreground)]">Search Source</p>
+						<div class="grid grid-cols-2 gap-3">
+							<button
+								class="px-4 py-3 text-xs font-medium tracking-wide border transition-all duration-300 rounded-lg {searchSource === 'deezer'
+									? 'btn-primary border-transparent'
+									: 'btn-secondary text-[var(--muted-foreground)]'}"
+								onclick={() => searchSource = 'deezer'}
+							>
+								Deezer
+							</button>
+							<button
+								class="px-4 py-3 text-xs font-medium tracking-wide border transition-all duration-300 rounded-lg {searchSource === 'spotify'
+									? 'btn-primary border-transparent'
+									: 'btn-secondary text-[var(--muted-foreground)]'}"
+								onclick={() => searchSource = 'spotify'}
+							>
+								Spotify
+							</button>
 						</div>
+					</div>
 
-					{:else if metadata.type === 'album' && metadata.album}
-						{@const album = metadata.album}
-						<div class="glass-card border rounded-xl overflow-hidden fade-up">
-							<div class="flex gap-3 sm:gap-4 p-3 sm:p-4">
-								{#if album.cover_url}
-									<img
-										src={album.cover_url}
-										alt={album.name}
-										class="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 rounded border border-[var(--border)] object-cover"
-									/>
-								{:else}
-									<div class="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 rounded border border-[var(--border)] bg-[var(--secondary)] flex items-center justify-center">
-										<Disc3 class="w-6 h-6 sm:w-8 sm:h-8 text-[var(--muted-foreground)]" />
-									</div>
-								{/if}
-
-								<div class="flex-1 min-w-0">
-									<div class="flex items-center gap-2 mb-1">
-										<span class="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[10px] font-medium bg-[var(--foreground)] text-[var(--background)] rounded-full">ALBUM</span>
-									</div>
-									<h3 class="font-bold text-sm sm:text-base text-[var(--foreground)] truncate">{album.name}</h3>
-									<p class="text-xs sm:text-sm text-[var(--muted-foreground)] truncate">{album.artist}</p>
-									<div class="flex gap-1.5 sm:gap-2 mt-1.5 sm:mt-2 flex-wrap">
-										<span class="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[10px] font-mono bg-[var(--secondary)] text-[var(--muted-foreground)] rounded">{album.total_tracks} tracks</span>
-										{#if album.release_date}
-											<span class="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[10px] font-mono bg-[var(--secondary)] text-[var(--muted-foreground)] rounded">{album.release_date.split('-')[0]}</span>
-										{/if}
-									</div>
+					<!-- Input -->
+					<div class="glass-card rounded-2xl p-6 lg:p-8">
+						<p class="mb-4 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--muted-foreground)]">Input</p>
+						<div class="relative">
+							<input
+								type="text"
+								placeholder="Paste URL or type song name..."
+								class="input-glow w-full h-14 px-5 text-sm rounded-xl outline-none placeholder:text-[var(--muted-foreground)] bg-[var(--secondary)]/50"
+								bind:value={query}
+								oninput={handleInput}
+							/>
+							{#if loading}
+								<div class="absolute right-5 top-1/2 -translate-y-1/2">
+									<Loader2 class="w-5 h-5 animate-spin text-[var(--primary)]" />
 								</div>
-							</div>
-
-							<!-- Download All Button -->
-							<div class="border-t border-[var(--border)] p-2.5 sm:p-3">
-								{#if batchDownloading}
-									<BatchProgress
-										current={batchProgress.current}
-										total={batchProgress.total}
-										success={batchProgress.success}
-										failed={batchProgress.failed}
-									/>
+							{/if}
+						</div>
+						<div class="mt-4 flex items-center justify-between">
+							<div class="flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
+								{#if getInputIconMode() === 'loading'}
+									<Loader2 class="h-3.5 w-3.5 animate-spin text-[var(--primary)]" />
+								{:else if getInputIconMode() === 'url'}
+									<Link2 class="h-3.5 w-3.5 text-[var(--primary)]" />
+								{:else if getInputIconMode() === 'search'}
+									<Search class="h-3.5 w-3.5 text-[var(--primary)]" />
 								{:else}
-									<button
-										onclick={handleDownloadAll}
-										class="btn-primary flex items-center justify-center gap-2 w-full py-2 sm:py-2.5 text-xs sm:text-sm rounded-lg"
-									>
-										<Download class="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-										DOWNLOAD ALL ({album.total_tracks})
-									</button>
+									<Sparkles class="h-3.5 w-3.5" />
 								{/if}
+								<span>{getInputHint()}</span>
 							</div>
+							<span class="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--muted-foreground)]">{getInputBadge()}</span>
+						</div>
+					</div>
 
-							<!-- Track List -->
-							<div class="border-t border-[var(--border)] max-h-48 sm:max-h-64 overflow-y-auto">
-								{#each album.tracks as track, i}
-									{@const status = getTrackStatus(track)}
-									<div class="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--secondary)] transition-colors">
-										<span class="w-4 sm:w-5 text-center text-[10px] sm:text-xs font-mono text-[var(--muted-foreground)]">{i + 1}</span>
+					<!-- Quick Info -->
+					<div class="grid grid-cols-3 gap-4">
+						<div class="text-center py-4">
+							<p class="font-display text-2xl text-gradient">24-bit</p>
+							<p class="mt-1 text-[10px] font-mono uppercase tracking-[0.15em] text-[var(--muted-foreground)]">Hi-Res</p>
+						</div>
+						<div class="text-center py-4 border-x border-[var(--border)]">
+							<p class="font-display text-2xl text-gradient">192</p>
+							<p class="mt-1 text-[10px] font-mono uppercase tracking-[0.15em] text-[var(--muted-foreground)]">kHz</p>
+						</div>
+						<div class="text-center py-4">
+							<p class="font-display text-2xl text-gradient">3</p>
+							<p class="mt-1 text-[10px] font-mono uppercase tracking-[0.15em] text-[var(--muted-foreground)]">Sources</p>
+						</div>
+					</div>
+				</div>
+
+				<!-- Right Column: Results -->
+				<div class="space-y-6">
+					<!-- Search Results -->
+					{#if searchResults.length > 0}
+						<div class="glass-card rounded-2xl overflow-hidden fade-up">
+							<div class="px-6 py-4 border-b border-[var(--border)] bg-[var(--secondary)]/30">
+								<p class="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--muted-foreground)]">Search Results <span class="text-[var(--foreground)]">({searchResults.length})</span></p>
+							</div>
+							<div class="max-h-80 overflow-y-auto">
+								{#each searchResults as track}
+									<button
+										class="w-full flex items-center gap-4 px-6 py-4 border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--secondary)]/50 transition-all text-left group"
+										onclick={() => selectTrack(track)}
+									>
 										{#if track.cover_url}
-											<img src={track.cover_url} alt="" class="w-7 h-7 sm:w-8 sm:h-8 rounded border border-[var(--border)] object-cover" />
+											<img src={track.cover_url} alt="" class="w-12 h-12 rounded-lg border border-[var(--border)] object-cover group-hover:scale-105 transition-transform" />
 										{:else}
-											<div class="w-7 h-7 sm:w-8 sm:h-8 rounded border border-[var(--border)] bg-[var(--secondary)] flex items-center justify-center">
-												<Music class="w-3 h-3 text-[var(--muted-foreground)]" />
+											<div class="w-12 h-12 rounded-lg border border-[var(--border)] bg-[var(--secondary)] flex items-center justify-center">
+												<Music class="w-5 h-5 text-[var(--muted-foreground)]" />
 											</div>
 										{/if}
 										<div class="flex-1 min-w-0">
-											<p class="text-xs sm:text-sm text-[var(--foreground)] truncate">{track.title}</p>
-											<p class="text-[10px] sm:text-xs text-[var(--muted-foreground)] truncate">{track.artist}</p>
+											<p class="text-sm font-medium text-[var(--foreground)] truncate group-hover:text-[var(--primary)] transition-colors">{track.title}</p>
+											<p class="text-xs text-[var(--muted-foreground)] truncate">{track.artist}</p>
 										</div>
 										{#if track.duration_ms}
-											<span class="text-[10px] font-mono text-[var(--muted-foreground)] hidden sm:inline">{formatDuration(track.duration_ms)}</span>
+											<span class="text-[11px] font-mono text-[var(--muted-foreground)]">{formatDuration(track.duration_ms)}</span>
 										{/if}
-										<div class="w-4 sm:w-5">
-											{#if status?.status === 'downloading'}
-												<Loader2 class="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin text-[var(--muted-foreground)]" />
-											{:else if status?.status === 'success'}
-												<Check class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" />
-											{:else if status?.status === 'error'}
-												<X class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500" />
-											{/if}
-										</div>
-									</div>
-								{/each}
-							</div>
-						</div>
-
-					{:else if metadata.type === 'playlist' && metadata.playlist}
-						{@const playlist = metadata.playlist}
-						<div class="glass-card border rounded-xl overflow-hidden fade-up">
-							<div class="flex gap-3 sm:gap-4 p-3 sm:p-4">
-								{#if playlist.cover_url}
-									<img
-										src={playlist.cover_url}
-										alt={playlist.name}
-										class="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 rounded border border-[var(--border)] object-cover"
-									/>
-								{:else}
-									<div class="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 rounded border border-[var(--border)] bg-[var(--secondary)] flex items-center justify-center">
-										<ListMusic class="w-6 h-6 sm:w-8 sm:h-8 text-[var(--muted-foreground)]" />
-									</div>
-								{/if}
-
-								<div class="flex-1 min-w-0">
-									<div class="flex items-center gap-2 mb-1">
-										<span class="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[10px] font-medium bg-[var(--foreground)] text-[var(--background)] rounded-full">PLAYLIST</span>
-									</div>
-									<h3 class="font-bold text-sm sm:text-base text-[var(--foreground)] truncate">{playlist.name}</h3>
-									{#if playlist.owner}
-										<p class="text-xs sm:text-sm text-[var(--muted-foreground)] truncate">by {playlist.owner}</p>
-									{/if}
-									<div class="flex gap-1.5 sm:gap-2 mt-1.5 sm:mt-2">
-										<span class="px-1.5 sm:px-2 py-0.5 text-[8px] sm:text-[10px] font-mono bg-[var(--secondary)] text-[var(--muted-foreground)] rounded">{playlist.total_tracks} tracks</span>
-									</div>
-								</div>
-							</div>
-
-							<!-- Download All Button -->
-							<div class="border-t border-[var(--border)] p-2.5 sm:p-3">
-								{#if batchDownloading}
-									<BatchProgress
-										current={batchProgress.current}
-										total={batchProgress.total}
-										success={batchProgress.success}
-										failed={batchProgress.failed}
-									/>
-								{:else}
-									<button
-										onclick={handleDownloadAll}
-										class="btn-primary flex items-center justify-center gap-2 w-full py-2 sm:py-2.5 text-xs sm:text-sm rounded-lg"
-									>
-										<Download class="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-										DOWNLOAD ALL ({playlist.total_tracks})
-									</button>
-								{/if}
-							</div>
-
-							<!-- Track List -->
-							<div class="border-t border-[var(--border)] max-h-48 sm:max-h-64 overflow-y-auto">
-								{#each playlist.tracks as track, i}
-									{@const status = getTrackStatus(track)}
-									<button
-										class="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-1.5 sm:py-2 border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--secondary)] transition-colors text-left disabled:opacity-50"
-										onclick={() => handleDownloadSingleFromList(track)}
-										disabled={status?.status === 'downloading' || status?.status === 'success'}
-									>
-										<span class="w-4 sm:w-5 text-center text-[10px] sm:text-xs font-mono text-[var(--muted-foreground)]">{i + 1}</span>
-										{#if track.cover_url}
-											<img src={track.cover_url} alt="" class="w-7 h-7 sm:w-8 sm:h-8 rounded border border-[var(--border)] object-cover" />
-										{:else}
-											<div class="w-7 h-7 sm:w-8 sm:h-8 rounded border border-[var(--border)] bg-[var(--secondary)] flex items-center justify-center">
-												<Music class="w-3 h-3 text-[var(--muted-foreground)]" />
-											</div>
-										{/if}
-										<div class="flex-1 min-w-0">
-											<p class="text-xs sm:text-sm text-[var(--foreground)] truncate">{track.title}</p>
-											<p class="text-[10px] sm:text-xs text-[var(--muted-foreground)] truncate">{track.artist}</p>
-										</div>
-										{#if track.duration_ms}
-											<span class="text-[10px] font-mono text-[var(--muted-foreground)] hidden sm:inline">{formatDuration(track.duration_ms)}</span>
-										{/if}
-										<div class="w-5 sm:w-6 flex justify-center">
-											{#if status?.status === 'downloading'}
-												<Loader2 class="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin text-[var(--muted-foreground)]" />
-											{:else if status?.status === 'success'}
-												<Check class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" />
-											{:else if status?.status === 'error'}
-												<X class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500" />
-											{:else}
-												<Download class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--muted-foreground)]" />
-											{/if}
-										</div>
+										<Download class="w-4 h-4 text-[var(--muted-foreground)] opacity-0 group-hover:opacity-100 transition-opacity" />
 									</button>
 								{/each}
 							</div>
 						</div>
 					{/if}
 
-					<button
-						onclick={reset}
-						class="btn-secondary mt-3 sm:mt-4 w-full py-1.5 sm:py-2 text-[10px] sm:text-xs rounded-lg"
-					>
-						START OVER
-					</button>
-				{:else if !loading && searchResults.length === 0}
-					<div class="glass-card rounded-xl p-4 sm:p-5 fade-up">
-						<p class="font-display text-base sm:text-lg">Ready for your next track.</p>
-						<p class="mt-1 text-xs sm:text-sm text-[var(--muted-foreground)]">Choose one of these quick starts:</p>
-						<div class="mt-3 grid gap-2 sm:grid-cols-3">
-							<div class="rounded-lg border border-[var(--border)] bg-[var(--secondary)]/60 p-2.5">
-								<p class="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Track</p>
-								<p class="mt-1 text-xs text-[var(--foreground)]">Paste a Spotify/Deezer track link for single download.</p>
+					<!-- Track/Album/Playlist Display -->
+					{#if metadata}
+						{#if metadata.type === 'track' && metadata.track}
+							{@const track = metadata.track}
+							{@const trackStatus = getTrackStatus(track)}
+							<div class="glass-card rounded-2xl overflow-hidden fade-up luxury-hover">
+								<div class="p-6 lg:p-8">
+									<div class="flex gap-6">
+										{#if track.cover_url}
+											<img
+												src={track.cover_url}
+												alt={track.title}
+												class="w-28 h-28 lg:w-36 lg:h-36 flex-shrink-0 rounded-xl border border-[var(--border)] object-cover shadow-2xl"
+											/>
+										{:else}
+											<div class="w-28 h-28 lg:w-36 lg:h-36 flex-shrink-0 rounded-xl border border-[var(--border)] bg-[var(--secondary)] flex items-center justify-center">
+												<Music class="w-10 h-10 text-[var(--muted-foreground)]" />
+											</div>
+										{/if}
+
+										<div class="flex-1 min-w-0">
+											<span class="inline-block px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.15em] bg-[var(--foreground)] text-[var(--background)] rounded-full mb-3">Track</span>
+											<h3 class="font-display text-xl lg:text-2xl text-[var(--foreground)] leading-tight">{track.title}</h3>
+											<p class="mt-1 text-sm text-[var(--muted-foreground)]">{track.artist}</p>
+											{#if track.album}
+												<p class="text-xs text-[var(--muted-foreground)] mt-1">{track.album}</p>
+											{/if}
+											<div class="flex gap-2 mt-4">
+												{#if track.duration_ms}
+													<span class="px-2 py-1 text-[10px] font-mono bg-[var(--secondary)] text-[var(--muted-foreground)] rounded-md">{formatDuration(track.duration_ms)}</span>
+												{/if}
+												{#if track.release_date}
+													<span class="px-2 py-1 text-[10px] font-mono bg-[var(--secondary)] text-[var(--muted-foreground)] rounded-md">{track.release_date.split('-')[0]}</span>
+												{/if}
+											</div>
+										</div>
+									</div>
+								</div>
+
+								<div class="border-t border-[var(--border)] p-6">
+									{#if trackStatus?.status === 'success'}
+										<a
+											href={getFileUrl(trackStatus.fileName || '')}
+											download
+											class="btn-primary flex items-center justify-center gap-3 w-full py-3.5 text-sm font-semibold tracking-wide rounded-xl"
+										>
+											<Download class="w-4 h-4" />
+											Save File
+										</a>
+									{:else}
+										<button
+											onclick={handleDownloadTrack}
+											disabled={downloading}
+											class="btn-primary flex items-center justify-center gap-3 w-full py-3.5 text-sm font-semibold tracking-wide rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+										>
+											{#if downloading}
+												<Loader2 class="w-4 h-4 animate-spin" />
+												Processing...
+											{:else}
+												<Download class="w-4 h-4" />
+												Download FLAC
+											{/if}
+										</button>
+									{/if}
+								</div>
 							</div>
-							<div class="rounded-lg border border-[var(--border)] bg-[var(--secondary)]/60 p-2.5">
-								<p class="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Album</p>
-								<p class="mt-1 text-xs text-[var(--foreground)]">Paste an album URL and pull full-track FLAC batches.</p>
+
+						{:else if metadata.type === 'album' && metadata.album}
+							{@const album = metadata.album}
+							<div class="glass-card rounded-2xl overflow-hidden fade-up luxury-hover">
+								<div class="p-6 lg:p-8">
+									<div class="flex gap-6">
+										{#if album.cover_url}
+											<img
+												src={album.cover_url}
+												alt={album.name}
+												class="w-28 h-28 lg:w-36 lg:h-36 flex-shrink-0 rounded-xl border border-[var(--border)] object-cover shadow-2xl"
+											/>
+										{:else}
+											<div class="w-28 h-28 lg:w-36 lg:h-36 flex-shrink-0 rounded-xl border border-[var(--border)] bg-[var(--secondary)] flex items-center justify-center">
+												<Disc3 class="w-10 h-10 text-[var(--muted-foreground)]" />
+											</div>
+										{/if}
+
+										<div class="flex-1 min-w-0">
+											<span class="inline-block px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.15em] bg-[var(--foreground)] text-[var(--background)] rounded-full mb-3">Album</span>
+											<h3 class="font-display text-xl lg:text-2xl text-[var(--foreground)] leading-tight">{album.name}</h3>
+											<p class="mt-1 text-sm text-[var(--muted-foreground)]">{album.artist}</p>
+											<div class="flex gap-2 mt-4">
+												<span class="px-2 py-1 text-[10px] font-mono bg-[var(--secondary)] text-[var(--muted-foreground)] rounded-md">{album.total_tracks} tracks</span>
+												{#if album.release_date}
+													<span class="px-2 py-1 text-[10px] font-mono bg-[var(--secondary)] text-[var(--muted-foreground)] rounded-md">{album.release_date.split('-')[0]}</span>
+												{/if}
+											</div>
+										</div>
+									</div>
+								</div>
+
+								<div class="border-t border-[var(--border)] p-6">
+									{#if batchDownloading}
+										<BatchProgress
+											current={batchProgress.current}
+											total={batchProgress.total}
+											success={batchProgress.success}
+											failed={batchProgress.failed}
+										/>
+									{:else}
+										<button
+											onclick={handleDownloadAll}
+											class="btn-primary flex items-center justify-center gap-3 w-full py-3.5 text-sm font-semibold tracking-wide rounded-xl"
+										>
+											<Download class="w-4 h-4" />
+											Download All ({album.total_tracks})
+										</button>
+									{/if}
+								</div>
+
+								<div class="border-t border-[var(--border)] max-h-64 overflow-y-auto">
+									{#each album.tracks as track, i}
+										{@const status = getTrackStatus(track)}
+										<div class="flex items-center gap-4 px-6 py-3 border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--secondary)]/30 transition-colors">
+											<span class="w-5 text-center text-[11px] font-mono text-[var(--muted-foreground)]">{i + 1}</span>
+											{#if track.cover_url}
+												<img src={track.cover_url} alt="" class="w-9 h-9 rounded-md border border-[var(--border)] object-cover" />
+											{:else}
+												<div class="w-9 h-9 rounded-md border border-[var(--border)] bg-[var(--secondary)] flex items-center justify-center">
+													<Music class="w-3.5 h-3.5 text-[var(--muted-foreground)]" />
+												</div>
+											{/if}
+											<div class="flex-1 min-w-0">
+												<p class="text-sm text-[var(--foreground)] truncate">{track.title}</p>
+												<p class="text-[11px] text-[var(--muted-foreground)] truncate">{track.artist}</p>
+											</div>
+											{#if track.duration_ms}
+												<span class="text-[11px] font-mono text-[var(--muted-foreground)]">{formatDuration(track.duration_ms)}</span>
+											{/if}
+											<div class="w-5">
+												{#if status?.status === 'downloading'}
+													<Loader2 class="w-4 h-4 animate-spin text-[var(--muted-foreground)]" />
+												{:else if status?.status === 'success'}
+													<Check class="w-4 h-4 text-emerald-500" />
+												{:else if status?.status === 'error'}
+													<X class="w-4 h-4 text-red-500" />
+												{/if}
+											</div>
+										</div>
+									{/each}
+								</div>
 							</div>
-							<div class="rounded-lg border border-[var(--border)] bg-[var(--secondary)]/60 p-2.5">
-								<p class="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--muted-foreground)]">Search</p>
-								<p class="mt-1 text-xs text-[var(--foreground)]">Type a title/artist and select the result you want.</p>
+
+						{:else if metadata.type === 'playlist' && metadata.playlist}
+							{@const playlist = metadata.playlist}
+							<div class="glass-card rounded-2xl overflow-hidden fade-up luxury-hover">
+								<div class="p-6 lg:p-8">
+									<div class="flex gap-6">
+										{#if playlist.cover_url}
+											<img
+												src={playlist.cover_url}
+												alt={playlist.name}
+												class="w-28 h-28 lg:w-36 lg:h-36 flex-shrink-0 rounded-xl border border-[var(--border)] object-cover shadow-2xl"
+											/>
+										{:else}
+											<div class="w-28 h-28 lg:w-36 lg:h-36 flex-shrink-0 rounded-xl border border-[var(--border)] bg-[var(--secondary)] flex items-center justify-center">
+												<ListMusic class="w-10 h-10 text-[var(--muted-foreground)]" />
+											</div>
+										{/if}
+
+										<div class="flex-1 min-w-0">
+											<span class="inline-block px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.15em] bg-[var(--foreground)] text-[var(--background)] rounded-full mb-3">Playlist</span>
+											<h3 class="font-display text-xl lg:text-2xl text-[var(--foreground)] leading-tight">{playlist.name}</h3>
+											{#if playlist.owner}
+												<p class="mt-1 text-sm text-[var(--muted-foreground)]">by {playlist.owner}</p>
+											{/if}
+											<div class="flex gap-2 mt-4">
+												<span class="px-2 py-1 text-[10px] font-mono bg-[var(--secondary)] text-[var(--muted-foreground)] rounded-md">{playlist.total_tracks} tracks</span>
+											</div>
+										</div>
+									</div>
+								</div>
+
+								<div class="border-t border-[var(--border)] p-6">
+									{#if batchDownloading}
+										<BatchProgress
+											current={batchProgress.current}
+											total={batchProgress.total}
+											success={batchProgress.success}
+											failed={batchProgress.failed}
+										/>
+									{:else}
+										<button
+											onclick={handleDownloadAll}
+											class="btn-primary flex items-center justify-center gap-3 w-full py-3.5 text-sm font-semibold tracking-wide rounded-xl"
+										>
+											<Download class="w-4 h-4" />
+											Download All ({playlist.total_tracks})
+										</button>
+									{/if}
+								</div>
+
+								<div class="border-t border-[var(--border)] max-h-64 overflow-y-auto">
+									{#each playlist.tracks as track, i}
+										{@const status = getTrackStatus(track)}
+										<button
+											class="w-full flex items-center gap-4 px-6 py-3 border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--secondary)]/30 transition-colors text-left disabled:opacity-50"
+											onclick={() => handleDownloadSingleFromList(track)}
+											disabled={status?.status === 'downloading' || status?.status === 'success'}
+										>
+											<span class="w-5 text-center text-[11px] font-mono text-[var(--muted-foreground)]">{i + 1}</span>
+											{#if track.cover_url}
+												<img src={track.cover_url} alt="" class="w-9 h-9 rounded-md border border-[var(--border)] object-cover" />
+											{:else}
+												<div class="w-9 h-9 rounded-md border border-[var(--border)] bg-[var(--secondary)] flex items-center justify-center">
+													<Music class="w-3.5 h-3.5 text-[var(--muted-foreground)]" />
+												</div>
+											{/if}
+											<div class="flex-1 min-w-0">
+												<p class="text-sm text-[var(--foreground)] truncate">{track.title}</p>
+												<p class="text-[11px] text-[var(--muted-foreground)] truncate">{track.artist}</p>
+											</div>
+											{#if track.duration_ms}
+												<span class="text-[11px] font-mono text-[var(--muted-foreground)]">{formatDuration(track.duration_ms)}</span>
+											{/if}
+											<div class="w-6 flex justify-center">
+												{#if status?.status === 'downloading'}
+													<Loader2 class="w-4 h-4 animate-spin text-[var(--muted-foreground)]" />
+												{:else if status?.status === 'success'}
+													<Check class="w-4 h-4 text-emerald-500" />
+												{:else if status?.status === 'error'}
+													<X class="w-4 h-4 text-red-500" />
+												{:else}
+													<Download class="w-4 h-4 text-[var(--muted-foreground)]" />
+												{/if}
+											</div>
+										</button>
+									{/each}
+								</div>
+							</div>
+						{/if}
+
+						<button
+							onclick={reset}
+							class="btn-secondary w-full py-3 text-xs font-medium tracking-wide rounded-xl"
+						>
+							Start Over
+						</button>
+					{:else if !loading && searchResults.length === 0}
+						<div class="glass-card rounded-2xl p-8 lg:p-12 text-center">
+							<div class="w-16 h-16 mx-auto mb-6 rounded-2xl bg-[var(--secondary)] flex items-center justify-center">
+								<Music class="w-8 h-8 text-[var(--primary)]" />
+							</div>
+							<h3 class="font-display text-xl text-[var(--foreground)]">Ready to download</h3>
+							<p class="mt-2 text-sm text-[var(--muted-foreground)] max-w-sm mx-auto">
+								Paste a Spotify or Deezer URL, or search for tracks by name. Supports single tracks, albums, and playlists.
+							</p>
+							<div class="mt-8 flex justify-center gap-6 text-[11px] font-mono uppercase tracking-[0.15em] text-[var(--muted-foreground)]">
+								<span>Track</span>
+								<span class="text-[var(--border)]">|</span>
+								<span>Album</span>
+								<span class="text-[var(--border)]">|</span>
+								<span>Playlist</span>
 							</div>
 						</div>
-						<p class="mt-3 text-[10px] sm:text-xs text-[var(--muted-foreground)]">Supports Tidal, Qobuz, and Amazon source resolution.</p>
-					</div>
-				{/if}
+					{/if}
+				</div>
 			</div>
-		</div>
+		</section>
 	</main>
 
-	<div class="relative z-10 border-t border-[var(--border)] px-4 sm:px-6 py-3 flex justify-between items-center text-[9px] sm:text-[10px] font-medium uppercase tracking-[0.14em] bg-[var(--card)] backdrop-blur">
-		<div class="flex items-center gap-2">
-			<div class="relative h-2 w-2">
-				<span class="status-dot absolute"></span>
+	<!-- Elegant Footer -->
+	<footer class="relative z-10 border-t border-[var(--border)]">
+		<div class="mx-auto max-w-[min(1400px,94vw)] px-6 lg:px-12 py-8">
+			<div class="flex flex-col sm:flex-row justify-between items-center gap-4">
+				<div class="flex items-center gap-3">
+					<p class="font-display text-lg text-gradient">zFlac</p>
+					<span class="text-[var(--border)]">|</span>
+					<p class="text-xs text-[var(--muted-foreground)]">Lossless audio downloader</p>
+				</div>
+				<div class="flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.15em] text-[var(--muted-foreground)]">
+					<span class="relative h-1.5 w-1.5">
+						<span class="status-dot absolute"></span>
+					</span>
+					<span>v1.0</span>
+				</div>
 			</div>
-			<span class="font-mono">v1.0</span>
 		</div>
-		<span class="text-[var(--muted-foreground)]">FLAC Downloader</span>
-	</div>
+	</footer>
 </div>
