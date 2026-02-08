@@ -6,7 +6,7 @@
 
 <div class="relative min-h-screen bg-[var(--background)] text-[var(--foreground)]">
 	<header class="sticky top-0 z-30 border-b border-[var(--border)] bg-[color:color-mix(in_srgb,var(--background)_78%,transparent)] backdrop-blur-xl">
-		<div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 lg:px-8">
+		<div class="mx-auto flex h-16 max-w-[min(1800px,96vw)] items-center justify-between px-4 lg:px-8">
 			<div class="flex items-center gap-4">
 				<a href="/" class="inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted-foreground)] transition-all hover:border-[var(--border-glow)] hover:text-[var(--foreground)]">
 					<ArrowLeft class="h-4 w-4" />
@@ -21,7 +21,7 @@
 		</div>
 	</header>
 
-	<main class="relative z-10 mx-auto max-w-6xl px-4 py-8 lg:px-8">
+	<main class="relative z-10 mx-auto max-w-[min(1800px,96vw)] px-4 py-8 lg:px-8">
 		<section class="mb-8 rounded-2xl glass-card p-4 sm:p-6 fade-up">
 			<p class="mb-2 inline-flex items-center gap-1 rounded-full border border-[var(--border)] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--muted-foreground)]">
 				<Sparkles class="h-3 w-3" /> Developer Reference
@@ -54,7 +54,7 @@
 	</main>
 
 	<footer class="relative z-10 border-t border-[var(--border)] mt-12 bg-[var(--card)]/80 backdrop-blur">
-		<div class="mx-auto max-w-6xl px-4 lg:px-8 py-6">
+		<div class="mx-auto max-w-[min(1800px,96vw)] px-4 lg:px-8 py-6">
 			<p class="text-xs text-[var(--muted-foreground)] text-center">
 				zFlac API Documentation
 			</p>
