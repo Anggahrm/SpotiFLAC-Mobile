@@ -32,8 +32,9 @@ type TrackAvailability struct {
 
 var (
 	// Global SongLink client instance for connection reuse
-	globalSongLinkClient *SongLinkClient
-	songLinkClientOnce   sync.Once
+	globalSongLinkClient     *SongLinkClient
+	songLinkClientOnce       sync.Once
+	checkQobuzAvailabilityFn = checkQobuzAvailability
 )
 
 // NewSongLinkClient creates a new SongLink client (returns singleton for connection reuse)
@@ -52,7 +53,7 @@ func (s *SongLinkClient) CheckTrackAvailability(spotifyTrackID string, isrc stri
 	if spotifyTrackID == "" {
 		return nil, fmt.Errorf("spotify track ID is empty")
 	}
-	
+
 	// Use global rate limiter - blocks until request is allowed
 	songLinkRateLimiter.WaitForSlot()
 
@@ -67,6 +68,7 @@ func (s *SongLinkClient) CheckTrackAvailability(spotifyTrackID string, isrc stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("User-Agent", userAgentForURL(req.URL))
 
 	// Use retry logic with User-Agent
 	retryConfig := DefaultRetryConfig()
@@ -131,7 +133,7 @@ func (s *SongLinkClient) CheckTrackAvailability(spotifyTrackID string, isrc stri
 
 	// Check Qobuz using ISRC (SongLink doesn't support Qobuz directly)
 	if isrc != "" {
-		availability.Qobuz = checkQobuzAvailability(isrc)
+		availability.Qobuz = checkQobuzAvailabilityFn(isrc)
 	}
 
 	return availability, nil
@@ -211,11 +213,11 @@ func (s *SongLinkClient) GetDeezerIDFromSpotify(spotifyTrackID string) (string, 
 	if err != nil {
 		return "", err
 	}
-	
+
 	if !availability.Deezer || availability.DeezerID == "" {
 		return "", fmt.Errorf("track not found on Deezer")
 	}
-	
+
 	return availability.DeezerID, nil
 }
 
@@ -243,6 +245,7 @@ func (s *SongLinkClient) CheckAlbumAvailability(spotifyAlbumID string) (*AlbumAv
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("User-Agent", userAgentForURL(req.URL))
 
 	retryConfig := DefaultRetryConfig()
 	resp, err := DoRequestWithRetry(s.client, req, retryConfig)
@@ -290,11 +293,11 @@ func (s *SongLinkClient) GetDeezerAlbumIDFromSpotify(spotifyAlbumID string) (str
 	if err != nil {
 		return "", err
 	}
-	
+
 	if !availability.Deezer || availability.DeezerID == "" {
 		return "", fmt.Errorf("album not found on Deezer")
 	}
-	
+
 	return availability.DeezerID, nil
 }
 
@@ -308,7 +311,7 @@ func (s *SongLinkClient) CheckAvailabilityFromDeezer(deezerTrackID string) (*Tra
 	if deezerTrackID == "" {
 		return nil, fmt.Errorf("deezer track ID is empty")
 	}
-	
+
 	// Use global rate limiter
 	songLinkRateLimiter.WaitForSlot()
 
@@ -323,6 +326,7 @@ func (s *SongLinkClient) CheckAvailabilityFromDeezer(deezerTrackID string) (*Tra
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("User-Agent", userAgentForURL(req.URL))
 
 	retryConfig := DefaultRetryConfig()
 	resp, err := DoRequestWithRetry(s.client, req, retryConfig)
@@ -405,7 +409,7 @@ func (s *SongLinkClient) CheckAvailabilityByPlatform(platform, entityType, entit
 	if entityID == "" {
 		return nil, fmt.Errorf("%s ID is empty", platform)
 	}
-	
+
 	// Use global rate limiter
 	songLinkRateLimiter.WaitForSlot()
 
@@ -507,11 +511,11 @@ func (s *SongLinkClient) GetSpotifyIDFromDeezer(deezerTrackID string) (string, e
 	if err != nil {
 		return "", err
 	}
-	
+
 	if availability.SpotifyID == "" {
 		return "", fmt.Errorf("track not found on Spotify")
 	}
-	
+
 	return availability.SpotifyID, nil
 }
 
@@ -521,11 +525,11 @@ func (s *SongLinkClient) GetTidalURLFromDeezer(deezerTrackID string) (string, er
 	if err != nil {
 		return "", err
 	}
-	
+
 	if !availability.Tidal || availability.TidalURL == "" {
 		return "", fmt.Errorf("track not found on Tidal")
 	}
-	
+
 	return availability.TidalURL, nil
 }
 
@@ -535,10 +539,10 @@ func (s *SongLinkClient) GetAmazonURLFromDeezer(deezerTrackID string) (string, e
 	if err != nil {
 		return "", err
 	}
-	
+
 	if !availability.Amazon || availability.AmazonURL == "" {
 		return "", fmt.Errorf("track not found on Amazon Music")
 	}
-	
+
 	return availability.AmazonURL, nil
 }

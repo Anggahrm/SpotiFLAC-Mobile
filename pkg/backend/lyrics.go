@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -42,6 +43,34 @@ type LyricsClient struct {
 	httpClient *http.Client
 }
 
+var (
+	appVersionMu sync.RWMutex
+	appVersion   string
+)
+
+func SetAppVersion(version string) {
+	normalized := strings.TrimSpace(version)
+
+	appVersionMu.Lock()
+	defer appVersionMu.Unlock()
+	appVersion = normalized
+}
+
+func GetAppVersion() string {
+	appVersionMu.RLock()
+	defer appVersionMu.RUnlock()
+	return appVersion
+}
+
+func appUserAgent() string {
+	version := GetAppVersion()
+	if version == "" {
+		return "SpotiFLAC-Mobile"
+	}
+
+	return "SpotiFLAC-Mobile/" + version
+}
+
 func NewLyricsClient() *LyricsClient {
 	return &LyricsClient{
 		httpClient: &http.Client{
@@ -62,7 +91,7 @@ func (c *LyricsClient) FetchLyricsWithMetadata(artist, track string) (*LyricsRes
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("User-Agent", "SpotiFLAC-Android/1.0")
+	req.Header.Set("User-Agent", appUserAgent())
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -97,7 +126,7 @@ func (c *LyricsClient) FetchLyricsFromLRCLibSearch(query string) (*LyricsRespons
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("User-Agent", "SpotiFLAC-Android/1.0")
+	req.Header.Set("User-Agent", appUserAgent())
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

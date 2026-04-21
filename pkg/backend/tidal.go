@@ -39,6 +39,7 @@ type TidalTrack struct {
 	ID           int64  `json:"id"`
 	Title        string `json:"title"`
 	ISRC         string `json:"isrc"`
+	Copyright    string `json:"copyright"`
 	AudioQuality string `json:"audioQuality"`
 	TrackNumber  int    `json:"trackNumber"`
 	VolumeNumber int    `json:"volumeNumber"`
@@ -50,6 +51,7 @@ type TidalTrack struct {
 	} `json:"album"`
 	Artists []struct {
 		Name string `json:"name"`
+		Type string `json:"type"`
 	} `json:"artists"`
 	Artist struct {
 		Name string `json:"name"`
@@ -1249,6 +1251,52 @@ type TidalDownloadResult struct {
 	TrackNumber int
 	DiscNumber  int
 	ISRC        string
+	Copyright   string
+}
+
+func tidalTrackArtistsDisplay(track *TidalTrack) string {
+	if track == nil {
+		return ""
+	}
+
+	if len(track.Artists) == 0 {
+		return strings.TrimSpace(track.Artist.Name)
+	}
+
+	names := make([]string, 0, len(track.Artists))
+	for _, artist := range track.Artists {
+		if trimmed := strings.TrimSpace(artist.Name); trimmed != "" {
+			names = append(names, trimmed)
+		}
+	}
+	if len(names) == 0 {
+		return strings.TrimSpace(track.Artist.Name)
+	}
+
+	return strings.Join(names, ", ")
+}
+
+func tidalTrackAlbumArtistDisplay(track *TidalTrack) string {
+	if track == nil {
+		return ""
+	}
+
+	if len(track.Artists) > 0 {
+		names := make([]string, 0, len(track.Artists))
+		for _, artist := range track.Artists {
+			if artistType := strings.ToUpper(strings.TrimSpace(artist.Type)); artistType != "" && artistType != "MAIN" {
+				continue
+			}
+			if trimmed := strings.TrimSpace(artist.Name); trimmed != "" {
+				names = append(names, trimmed)
+			}
+		}
+		if len(names) > 0 {
+			return strings.Join(names, ", ")
+		}
+	}
+
+	return strings.TrimSpace(track.Artist.Name)
 }
 
 // artistsMatch checks if the artist names are similar enough
@@ -1516,14 +1564,7 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 		track, err = downloader.SearchTrackByMetadataWithISRC(req.TrackName, req.ArtistName, req.ISRC, expectedDurationSec)
 		if track != nil {
 			// Verify artist only (ISRC match is already accurate)
-			tidalArtist := track.Artist.Name
-			if len(track.Artists) > 0 {
-				var artistNames []string
-				for _, a := range track.Artists {
-					artistNames = append(artistNames, a.Name)
-				}
-				tidalArtist = strings.Join(artistNames, ", ")
-			}
+			tidalArtist := tidalTrackArtistsDisplay(track)
 			if !artistsMatch(req.ArtistName, tidalArtist) {
 				GoLog("[Tidal] Artist mismatch from ISRC search: expected '%s', got '%s'. Rejecting.\n",
 					req.ArtistName, tidalArtist)
@@ -1555,14 +1596,7 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 				track, err = downloader.GetTrackInfoByID(trackID)
 				if track != nil {
 					// Get artist name from track
-					tidalArtist := track.Artist.Name
-					if len(track.Artists) > 0 {
-						var artistNames []string
-						for _, a := range track.Artists {
-							artistNames = append(artistNames, a.Name)
-						}
-						tidalArtist = strings.Join(artistNames, ", ")
-					}
+					tidalArtist := tidalTrackArtistsDisplay(track)
 
 					// Verify artist matches (SongLink is already accurate, no title check needed)
 					if !artistsMatch(req.ArtistName, tidalArtist) {
@@ -1595,14 +1629,7 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 		track, err = downloader.SearchTrackByMetadataWithISRC(req.TrackName, req.ArtistName, "", expectedDurationSec)
 		// Verify artist AND title for metadata search
 		if track != nil {
-			tidalArtist := track.Artist.Name
-			if len(track.Artists) > 0 {
-				var artistNames []string
-				for _, a := range track.Artists {
-					artistNames = append(artistNames, a.Name)
-				}
-				tidalArtist = strings.Join(artistNames, ", ")
-			}
+			tidalArtist := tidalTrackArtistsDisplay(track)
 
 			// Verify title first
 			if !titlesMatch(req.TrackName, track.Title) {
@@ -1626,14 +1653,7 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 	}
 
 	// Final verification logging
-	tidalArtist := track.Artist.Name
-	if len(track.Artists) > 0 {
-		var artistNames []string
-		for _, a := range track.Artists {
-			artistNames = append(artistNames, a.Name)
-		}
-		tidalArtist = strings.Join(artistNames, ", ")
-	}
+	tidalArtist := tidalTrackArtistsDisplay(track)
 	GoLog("[Tidal] Match found: '%s' by '%s' (duration: %ds)\n", track.Title, tidalArtist, track.Duration)
 
 	// Cache the track ID for future use
@@ -1770,6 +1790,7 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 	}
 
 	// Embed metadata using parallel-fetched cover data
+	copyright := strings.TrimSpace(track.Copyright)
 	metadata := Metadata{
 		Title:       req.TrackName,
 		Artist:      req.ArtistName,
@@ -1780,6 +1801,10 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 		TotalTracks: req.TotalTracks,
 		DiscNumber:  track.VolumeNumber, // Use actual disc number from Tidal
 		ISRC:        track.ISRC,         // Use actual ISRC from Tidal
+		Copyright:   copyright,
+	}
+	if metadata.AlbumArtist == "" {
+		metadata.AlbumArtist = tidalTrackAlbumArtistDisplay(track)
 	}
 
 	// Use cover data from parallel fetch
@@ -1842,5 +1867,6 @@ func downloadFromTidal(req DownloadRequest) (TidalDownloadResult, error) {
 		TrackNumber: track.TrackNumber,
 		DiscNumber:  track.VolumeNumber,
 		ISRC:        track.ISRC,
+		Copyright:   copyright,
 	}, nil
 }

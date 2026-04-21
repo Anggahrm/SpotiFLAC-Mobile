@@ -17,17 +17,30 @@ import (
 
 // HTTP utility functions for consistent request handling across all downloaders
 
+func userAgentForURL(u *url.URL) string {
+	if u == nil {
+		return getRandomUserAgent()
+	}
+
+	host := strings.ToLower(strings.TrimSpace(u.Hostname()))
+	if host == "api.zarz.moe" {
+		return appUserAgent()
+	}
+
+	return getRandomUserAgent()
+}
+
 // getRandomUserAgent generates a random Windows Chrome User-Agent string
 // Uses same format as PC version (referensi/backend/spotify_metadata.go) for better API compatibility
 func getRandomUserAgent() string {
 	// Windows 10/11 Chrome format - same as PC version for maximum compatibility
 	// Some APIs may block mobile User-Agents, so we use desktop format
-	winMajor := rand.Intn(2) + 10  // Windows 10 or 11
-	
-	chromeVersion := rand.Intn(25) + 100 // Chrome 100-124
+	winMajor := rand.Intn(2) + 10 // Windows 10 or 11
+
+	chromeVersion := rand.Intn(25) + 100  // Chrome 100-124
 	chromeBuild := rand.Intn(1500) + 3000 // Build 3000-4500
-	chromePatch := rand.Intn(65) + 60 // Patch 60-125
-	
+	chromePatch := rand.Intn(65) + 60     // Patch 60-125
+
 	return fmt.Sprintf(
 		"Mozilla/5.0 (Windows NT %d.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%d.0.%d.%d Safari/537.36",
 		winMajor,
@@ -40,8 +53,8 @@ func getRandomUserAgent() string {
 // getRandomMacUserAgent generates a random Mac Chrome User-Agent string
 // Alternative format matching referensi/backend/spotify_metadata.go exactly
 func getRandomMacUserAgent() string {
-	macMajor := rand.Intn(4) + 11  // macOS 11-14
-	macMinor := rand.Intn(5) + 4   // Minor 4-8
+	macMajor := rand.Intn(4) + 11 // macOS 11-14
+	macMinor := rand.Intn(5) + 4  // Minor 4-8
 	webkitMajor := rand.Intn(7) + 530
 	webkitMinor := rand.Intn(7) + 30
 	chromeMajor := rand.Intn(25) + 80
@@ -74,11 +87,11 @@ func getRandomDesktopUserAgent() string {
 
 // Default timeout values
 const (
-	DefaultTimeout     = 60 * time.Second  // Default HTTP timeout
-	DownloadTimeout    = 120 * time.Second // Timeout for file downloads
-	SongLinkTimeout    = 30 * time.Second  // Timeout for SongLink API
-	DefaultMaxRetries  = 3                 // Default retry count
-	DefaultRetryDelay  = 1 * time.Second   // Initial retry delay
+	DefaultTimeout    = 60 * time.Second  // Default HTTP timeout
+	DownloadTimeout   = 120 * time.Second // Timeout for file downloads
+	SongLinkTimeout   = 30 * time.Second  // Timeout for SongLink API
+	DefaultMaxRetries = 3                 // Default retry count
+	DefaultRetryDelay = 1 * time.Second   // Initial retry delay
 )
 
 // Shared transport with connection pooling to prevent TCP exhaustion
@@ -96,9 +109,9 @@ var sharedTransport = &http.Transport{
 	ExpectContinueTimeout: 1 * time.Second,
 	DisableKeepAlives:     false, // Enable keep-alives for connection reuse
 	ForceAttemptHTTP2:     true,
-	WriteBufferSize:       64 * 1024,  // 64KB write buffer
-	ReadBufferSize:        64 * 1024,  // 64KB read buffer
-	DisableCompression:    true,       // FLAC is already compressed
+	WriteBufferSize:       64 * 1024, // 64KB write buffer
+	ReadBufferSize:        64 * 1024, // 64KB read buffer
+	DisableCompression:    true,      // FLAC is already compressed
 }
 
 // Shared HTTP client for general requests (reuses connections)
@@ -141,7 +154,7 @@ func CloseIdleConnections() {
 // DoRequestWithUserAgent executes an HTTP request with a random User-Agent header
 // Also checks for ISP blocking on errors
 func DoRequestWithUserAgent(client *http.Client, req *http.Request) (*http.Response, error) {
-	req.Header.Set("User-Agent", getRandomUserAgent())
+	req.Header.Set("User-Agent", userAgentForURL(req.URL))
 	resp, err := client.Do(req)
 	if err != nil {
 		// Check for ISP blocking
@@ -179,20 +192,20 @@ func DoRequestWithRetry(client *http.Client, req *http.Request, config RetryConf
 	for attempt := 0; attempt <= config.MaxRetries; attempt++ {
 		// Clone request for retry (body needs to be re-readable)
 		reqCopy := req.Clone(req.Context())
-		reqCopy.Header.Set("User-Agent", getRandomUserAgent())
+		reqCopy.Header.Set("User-Agent", userAgentForURL(reqCopy.URL))
 
 		resp, err := client.Do(reqCopy)
 		if err != nil {
 			lastErr = err
-			
+
 			// Check for ISP blocking on network errors
 			if CheckAndLogISPBlocking(err, requestURL, "HTTP") {
 				// Don't retry if ISP blocking is detected - it won't help
 				return nil, WrapErrorWithISPCheck(err, requestURL, "HTTP")
 			}
-			
+
 			if attempt < config.MaxRetries {
-				GoLog("[HTTP] Request failed (attempt %d/%d): %v, retrying in %v...\n", 
+				GoLog("[HTTP] Request failed (attempt %d/%d): %v, retrying in %v...\n",
 					attempt+1, config.MaxRetries+1, err, delay)
 				time.Sleep(delay)
 				delay = calculateNextDelay(delay, config)
@@ -227,13 +240,13 @@ func DoRequestWithRetry(client *http.Client, req *http.Request, config RetryConf
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			bodyStr := strings.ToLower(string(body))
-			
+
 			// Check if response looks like ISP blocking page
 			ispBlockingIndicators := []string{
 				"blocked", "forbidden", "access denied", "not available in your",
 				"restricted", "censored", "unavailable for legal", "blocked by",
 			}
-			
+
 			for _, indicator := range ispBlockingIndicators {
 				if strings.Contains(bodyStr, indicator) {
 					LogError("HTTP", "ISP BLOCKING DETECTED via HTTP %d response", resp.StatusCode)
@@ -481,7 +494,7 @@ func extractDomain(rawURL string) string {
 	if rawURL == "" {
 		return "unknown"
 	}
-	
+
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		// Try to extract domain manually
@@ -492,7 +505,7 @@ func extractDomain(rawURL string) string {
 		}
 		return rawURL
 	}
-	
+
 	if parsed.Host != "" {
 		return parsed.Host
 	}
@@ -505,11 +518,11 @@ func WrapErrorWithISPCheck(err error, requestURL string, tag string) error {
 	if err == nil {
 		return nil
 	}
-	
+
 	if CheckAndLogISPBlocking(err, requestURL, tag) {
 		domain := extractDomain(requestURL)
 		return fmt.Errorf("ISP blocking detected for %s - try using VPN or change DNS to 1.1.1.1/8.8.8.8: %w", domain, err)
 	}
-	
+
 	return err
 }

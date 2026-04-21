@@ -854,19 +854,8 @@ func downloadFromQobuz(req DownloadRequest) (QobuzDownloadResult, error) {
 		}
 	}
 
-	// Strategy 2: Search by metadata with duration verification (includes title verification)
 	if track == nil {
-		track, err = downloader.SearchTrackByMetadataWithDuration(req.TrackName, req.ArtistName, expectedDurationSec)
-		// Verify artist (title already verified in SearchTrackByMetadataWithDuration)
-		if track != nil && !qobuzArtistsMatch(req.ArtistName, track.Performer.Name) {
-			GoLog("[Qobuz] Artist mismatch from metadata search: expected '%s', got '%s'. Rejecting.\n",
-				req.ArtistName, track.Performer.Name)
-			track = nil
-		}
-	}
-
-	if track == nil {
-		errMsg := "could not find matching track on Qobuz (artist/duration mismatch)"
+		errMsg := "could not find matching track on Qobuz without identifier match"
 		if err != nil {
 			errMsg = err.Error()
 		}

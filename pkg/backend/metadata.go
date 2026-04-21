@@ -22,6 +22,7 @@ type Metadata struct {
 	TotalTracks int
 	DiscNumber  int
 	ISRC        string
+	Copyright   string
 	Description string
 	Lyrics      string
 }
@@ -73,6 +74,10 @@ func EmbedMetadata(filePath string, metadata Metadata, coverPath string) error {
 
 	if metadata.ISRC != "" {
 		setComment(cmt, "ISRC", metadata.ISRC)
+	}
+
+	if metadata.Copyright != "" {
+		setComment(cmt, "COPYRIGHT", metadata.Copyright)
 	}
 
 	if metadata.Description != "" {
