@@ -5,7 +5,6 @@ import {
   formatDuration,
   getFileUrl,
   getMetadata,
-  getProgress,
   searchTracks,
 } from "~/lib/api/client"
 import type { MetadataResult, TrackMetadata } from "~/lib/api/types"
@@ -33,10 +32,10 @@ type DownloadState = {
 }
 
 const providerOptions: { label: string; value: Provider; caption: string }[] = [
-  { label: "Auto", value: "auto", caption: "smart fallback" },
-  { label: "Tidal", value: "tidal", caption: "premium stream" },
+  { label: "Auto", value: "auto", caption: "smart routing" },
+  { label: "Tidal", value: "tidal", caption: "max quality" },
   { label: "Qobuz", value: "qobuz", caption: "hi-res alt" },
-  { label: "Amazon", value: "amazon", caption: "legacy fallback" },
+  { label: "Amazon", value: "amazon", caption: "fallback" },
 ]
 
 const sourceOptions: { label: string; value: SearchSource; caption: string }[] = [
@@ -51,90 +50,25 @@ const loading = ref(false)
 const batchRunning = ref(false)
 const provider = ref<Provider>("auto")
 const searchSource = ref<SearchSource>("spotify")
-const queuedTrackKeys = ref<string[]>([])
-const queuePaused = ref(false)
 const notice = ref<{ tone: NoticeTone; text: string }>({
   tone: "neutral",
-  text: "Paste a link or search by title, then move straight into the queue. No streaming clone, just a sharp download desk.",
+  text: "Search by title or paste a link, then move straight to download.",
 })
 const downloadState = ref<Record<string, DownloadState>>({})
 const searchRequestSeq = ref(0)
-const playerTrackKey = ref<string | null>(null)
-const playerCurrentTime = ref(0)
-const playerDuration = ref(0)
-const playerPlaying = ref(false)
-let playerAudio: HTMLAudioElement | null = null
 
 useSeoMeta({
-  title: "Signal Desk",
-  description: "Brutalist FLAC download workspace for fast link resolution, search, and queue tracking.",
+  title: "FLAC by Zumy",
+  description: "Brutalist FLAC download desk for fast search, link resolve, and direct capture.",
 })
 
 const trimmedQuery = computed(() => query.value.trim())
 const queryLooksLikeUrl = computed(() => isSupportedUrl(trimmedQuery.value))
 const tracks = computed(() => metadataToTracks(metadata.value))
-const collectionLabel = computed(() => getCollectionLabel(metadata.value))
 const collectionTitle = computed(() => getCollectionTitle(metadata.value))
 const collectionSubtitle = computed(() => getCollectionSubtitle(metadata.value))
 const collectionArtwork = computed(() => getCollectionArtwork(metadata.value))
-
-const fieldNotes = computed(() => [
-  { label: "input", value: queryLooksLikeUrl.value ? "link resolve" : "title search" },
-  { label: "route", value: provider.value === "auto" ? "smart queue" : provider.value },
-  { label: "surface", value: "mobile to desktop" },
-])
-
-const resultLead = computed(() => searchResults.value[0] ?? null)
-const resultGrid = computed(() => searchResults.value.slice(1))
-
-const trackCards = computed(() =>
-  tracks.value.map((track) => ({
-    key: buildTrackKey(track),
-    track,
-    state: downloadState.value[buildTrackKey(track)] ?? { status: "idle" as const },
-  })),
-)
-
-const activeDownloadCards = computed(() =>
-  trackCards.value.filter((entry) => entry.state.status === "downloading"),
-)
-
-const readyDownloadCards = computed(() =>
-  trackCards.value.filter((entry) => entry.state.status === "success"),
-)
-
-const queuedTrackCards = computed(() =>
-  queuedTrackKeys.value
-    .map((key) => trackCards.value.find((entry) => entry.key === key))
-    .filter((entry): entry is (typeof trackCards.value)[number] => Boolean(entry) && entry.state.status !== "downloading"),
-)
-
-const playerTrackCard = computed(() => {
-  if (playerTrackKey.value) {
-    return trackCards.value.find((entry) => entry.key === playerTrackKey.value) ?? null
-  }
-  return trackCards.value[0] ?? null
-})
-
-const playerTrack = computed(() => playerTrackCard.value?.track ?? null)
-
-const playerSource = computed(() => {
-  const track = playerTrack.value
-  if (!track) return ""
-  const state = stateFor(track)
-  if (state.fileName) return getFileUrl(state.fileName)
-  if (track.preview_url) return track.preview_url
-  return ""
-})
-
-const playerSourceLabel = computed(() => {
-  const track = playerTrack.value
-  if (!track) return "Select a track from the desk"
-  const state = stateFor(track)
-  if (state.fileName) return "Downloaded file playback"
-  if (track.preview_url) return "Provider preview stream"
-  return "No preview available until the file is ready"
-})
+const collectionLabel = computed(() => getCollectionLabel(metadata.value))
 
 function setNotice(tone: NoticeTone, text: string) {
   notice.value = { tone, text }
@@ -145,22 +79,18 @@ function clearWorkspace() {
   metadata.value = null
   searchResults.value = []
   downloadState.value = {}
-  queuedTrackKeys.value = []
-  queuePaused.value = false
-  stopPlayback()
-  playerTrackKey.value = null
-  setNotice("neutral", "Fresh desk. Drop a new link or run another search.")
+  setNotice("neutral", "Fresh desk. Search again or paste another link.")
 }
 
 async function resolveMetadataFromInput(input: string) {
   loading.value = true
   searchResults.value = []
-  setNotice("neutral", "Resolving the pasted link into a clean track set…")
+  setNotice("neutral", "Resolving link metadata…")
 
   try {
     const result = await getMetadata(input)
     metadata.value = result
-    setNotice("success", "Metadata locked in. Review the track sheet and start the queue.")
+    setNotice("success", "Metadata resolved. Review the tracks below.")
   } catch (error) {
     metadata.value = null
     setNotice("error", error instanceof Error ? error.message : "Failed to resolve metadata")
@@ -171,7 +101,7 @@ async function resolveMetadataFromInput(input: string) {
 
 async function onSubmit() {
   if (!trimmedQuery.value) {
-    setNotice("error", "Enter a Spotify/Deezer link or a search query first.")
+    setNotice("error", "Enter a link or search query first.")
     return
   }
 
@@ -183,7 +113,7 @@ async function onSubmit() {
   const requestId = ++searchRequestSeq.value
   loading.value = true
   metadata.value = null
-  setNotice("neutral", `Searching ${searchSource.value} for the cleanest match…`)
+  setNotice("neutral", `Searching ${searchSource.value}…`)
 
   try {
     const result = await searchTracks(trimmedQuery.value, searchSource.value, 20)
@@ -193,8 +123,8 @@ async function onSubmit() {
     setNotice(
       result.tracks.length ? "success" : "neutral",
       result.tracks.length
-        ? `Found ${result.tracks.length} result${result.tracks.length > 1 ? "s" : ""}. Pick one to move it into the desk.`
-        : "No tracks found. Try another title or switch to a direct link.",
+        ? `Found ${result.tracks.length} result${result.tracks.length > 1 ? "s" : ""}. Pick one to continue.`
+        : "No tracks found. Try another title or use a direct link.",
     )
   } catch (error) {
     if (requestId !== searchRequestSeq.value) return
@@ -208,16 +138,11 @@ async function onSubmit() {
 function selectTrack(track: TrackMetadata) {
   metadata.value = { type: "track", track }
   searchResults.value = []
-  focusPlayer(track)
-  setNotice("success", `Selected ${track.title}. The track is now staged for download.`)
+  setNotice("success", `${track.title} selected and ready to download.`)
 }
 
 function stateFor(track: TrackMetadata): DownloadState {
   return downloadState.value[buildTrackKey(track)] ?? { status: "idle" }
-}
-
-function isQueued(track: TrackMetadata) {
-  return queuedTrackKeys.value.includes(buildTrackKey(track))
 }
 
 function stateLabel(track: TrackMetadata): string {
@@ -230,17 +155,15 @@ function stateLabel(track: TrackMetadata): string {
   }
   if (state.status === "success") return "Save file"
   if (state.status === "error") return "Retry"
-  if (isQueued(track)) return "Queued"
   return "Download"
 }
 
 function statusLabel(track: TrackMetadata): string {
   const state = stateFor(track)
-  if (state.status === "downloading") return state.detail || "connecting"
+  if (state.status === "downloading") return state.detail || "in transfer"
   if (state.status === "success") return "ready"
-  if (state.status === "error") return "needs retry"
-  if (isQueued(track)) return queuePaused.value ? "queued · paused" : "queued"
-  return "queued"
+  if (state.status === "error") return "failed"
+  return "waiting"
 }
 
 function fileUrlFor(track: TrackMetadata): string {
@@ -252,116 +175,11 @@ function wait(ms: number) {
   return new Promise((resolve) => globalThis.setTimeout(resolve, ms))
 }
 
-function ensurePlayerAudio() {
-  if (!import.meta.client) return null
-  if (playerAudio) return playerAudio
-
-  playerAudio = new Audio()
-  playerAudio.preload = "metadata"
-  playerAudio.addEventListener("timeupdate", () => {
-    playerCurrentTime.value = playerAudio?.currentTime ?? 0
-  })
-  playerAudio.addEventListener("loadedmetadata", () => {
-    playerDuration.value = Number.isFinite(playerAudio?.duration) ? (playerAudio?.duration ?? 0) : 0
-  })
-  playerAudio.addEventListener("pause", () => {
-    playerPlaying.value = false
-  })
-  playerAudio.addEventListener("play", () => {
-    playerPlaying.value = true
-  })
-  playerAudio.addEventListener("ended", () => {
-    playerPlaying.value = false
-  })
-
-  return playerAudio
-}
-
-function stopPlayback() {
-  if (!playerAudio) return
-  playerAudio.pause()
-  playerCurrentTime.value = 0
-  playerDuration.value = Number.isFinite(playerAudio.duration) ? playerAudio.duration : 0
-  playerPlaying.value = false
-}
-
-function focusPlayer(track: TrackMetadata) {
-  playerTrackKey.value = buildTrackKey(track)
-}
-
-function syncPlayerSource(autoplay = false) {
-  const audio = ensurePlayerAudio()
-  const source = playerSource.value
-  if (!audio) return
-
-  if (!source) {
-    audio.pause()
-    audio.removeAttribute("src")
-    audio.load()
-    playerCurrentTime.value = 0
-    playerDuration.value = 0
-    playerPlaying.value = false
-    return
-  }
-
-  const currentSrc = audio.currentSrc || audio.src
-  if (currentSrc === source) return
-
-  audio.pause()
-  audio.src = source
-  audio.load()
-  playerCurrentTime.value = 0
-  playerDuration.value = 0
-  playerPlaying.value = false
-
-  if (autoplay) {
-    void audio.play().catch(() => {
-      playerPlaying.value = false
-    })
-  }
-}
-
-async function togglePlayback() {
-  const audio = ensurePlayerAudio()
-  const source = playerSource.value
-  if (!audio || !source) {
-    setNotice("error", "No preview is available for this track yet.")
-    return
-  }
-
-  syncPlayerSource(false)
-
-  if (audio.paused) {
-    try {
-      await audio.play()
-    } catch (error) {
-      setNotice("error", error instanceof Error ? error.message : "Failed to start playback")
-    }
-  } else {
-    audio.pause()
-  }
-}
-
-function seekPlayback(event: Event) {
-  const audio = ensurePlayerAudio()
-  if (!audio) return
-  const target = event.target as HTMLInputElement
-  const nextTime = Number(target.value)
-  if (Number.isFinite(nextTime)) {
-    audio.currentTime = nextTime
-    playerCurrentTime.value = nextTime
-  }
-}
-
-async function pollDownloadProgress(
-  key: string,
-  itemId: string,
-  control: { active: boolean },
-) {
+async function pollDownloadProgress(key: string, itemId: string, control: { active: boolean }) {
   while (control.active) {
     try {
-      const progressData = await getProgress(itemId)
-      const entry = progressData[itemId]
+      const response = await getProgress(itemId)
+      const entry = response[itemId]
 
       if (entry && downloadState.value[key]?.status === "downloading") {
         const rawProgress = typeof entry.progress === "number" ? entry.progress : 0
@@ -369,25 +187,18 @@ async function pollDownloadProgress(
         const normalizedProgress = Math.max(0, Math.min(100, percentage))
         const rawStatus = typeof entry.status === "string" ? entry.status : "downloading"
 
-        const detail =
-          rawStatus === "finalizing"
-            ? "finalizing tags"
-            : normalizedProgress > 0
-              ? `${normalizedProgress}% transferred`
-              : "connecting"
-
         downloadState.value = {
           ...downloadState.value,
           [key]: {
             ...downloadState.value[key],
             status: "downloading",
             progress: normalizedProgress,
-            detail,
+            detail: rawStatus === "finalizing" ? "finalizing" : `${normalizedProgress}% transferred`,
           },
         }
       }
     } catch {
-      // Keep the download request active even if the progress poll flakes.
+      // ignore polling flakes and keep transfer active
     }
 
     if (!control.active) break
@@ -398,8 +209,6 @@ async function pollDownloadProgress(
 async function downloadSingle(track: TrackMetadata) {
   const key = buildTrackKey(track)
   const itemId = globalThis.crypto?.randomUUID?.() ?? buildTrackKey(track)
-  focusPlayer(track)
-  queuedTrackKeys.value = queuedTrackKeys.value.filter((entry) => entry !== key)
 
   downloadState.value = {
     ...downloadState.value,
@@ -424,16 +233,8 @@ async function downloadSingle(track: TrackMetadata) {
       else if (availability.qobuz) service = "qobuz"
       else if (availability.amazon) service = "amazon"
       else throw new Error("This track is not available on any configured provider.")
-
       useFallback = true
     }
-
-    setNotice(
-      "neutral",
-      useFallback
-        ? `Starting smart routing for ${track.title}…`
-        : `Starting ${service} capture for ${track.title}…`,
-    )
 
     const response = await downloadTrack({
       track_name: track.title,
@@ -463,9 +264,8 @@ async function downloadSingle(track: TrackMetadata) {
     const fileName = response.file_name || response.file_path.split("/").pop() || response.file_path
     downloadState.value = {
       ...downloadState.value,
-      [key]: { status: "success", fileName, itemId, progress: 100, detail: "ready to save" },
+      [key]: { status: "success", fileName, itemId, progress: 100, detail: "ready" },
     }
-    syncPlayerSource(false)
     setNotice("success", `${track.title} is ready to save.`)
   } catch (error) {
     downloadState.value = {
@@ -483,504 +283,209 @@ async function downloadSingle(track: TrackMetadata) {
   }
 }
 
-function enqueueTrack(track: TrackMetadata) {
-  const key = buildTrackKey(track)
-  const state = stateFor(track)
-
-  if (state.status === "downloading" || state.status === "success" || queuedTrackKeys.value.includes(key)) {
-    return
-  }
-
-  queuedTrackKeys.value = [...queuedTrackKeys.value, key]
-  focusPlayer(track)
-  setNotice("neutral", `${track.title} added to the queued desk.`)
-
-  if (!queuePaused.value) {
-    void processQueuedDownloads()
-  }
-}
-
-function removeQueuedTrack(key: string) {
-  queuedTrackKeys.value = queuedTrackKeys.value.filter((entry) => entry !== key)
-}
-
-async function processQueuedDownloads() {
-  if (batchRunning.value || queuePaused.value) return
+async function downloadAll() {
+  if (!tracks.value.length) return
 
   batchRunning.value = true
+  setNotice("neutral", `Starting sequential download for ${tracks.value.length} track${tracks.value.length > 1 ? "s" : ""}…`)
 
   try {
-    while (queuedTrackKeys.value.length && !queuePaused.value) {
-      const nextKey = queuedTrackKeys.value[0]
-      const nextEntry = trackCards.value.find((entry) => entry.key === nextKey)
-
-      if (!nextEntry) {
-        queuedTrackKeys.value = queuedTrackKeys.value.filter((entry) => entry !== nextKey)
-        continue
-      }
-
-      await downloadSingle(nextEntry.track)
-      queuedTrackKeys.value = queuedTrackKeys.value.filter((entry) => entry !== nextKey)
+    for (const track of tracks.value) {
+      await downloadSingle(track)
     }
   } finally {
     batchRunning.value = false
   }
 }
-
-function toggleQueuePaused() {
-  queuePaused.value = !queuePaused.value
-  if (!queuePaused.value) {
-    void processQueuedDownloads()
-  }
-}
-
-async function downloadAll() {
-  if (!tracks.value.length) return
-
-  for (const track of tracks.value) {
-    const state = stateFor(track)
-    if (state.status === "idle" || state.status === "error") {
-      enqueueTrack(track)
-    }
-  }
-
-  setNotice(
-    "neutral",
-    `Queued ${queuedTrackKeys.value.length} track${queuedTrackKeys.value.length > 1 ? "s" : ""} for sequential download.`,
-  )
-}
-
-watch(
-  tracks,
-  (nextTracks) => {
-    if (!nextTracks.length) {
-      playerTrackKey.value = null
-      stopPlayback()
-      return
-    }
-
-    if (!playerTrackKey.value || !nextTracks.some((track) => buildTrackKey(track) === playerTrackKey.value)) {
-      playerTrackKey.value = buildTrackKey(nextTracks[0])
-    }
-  },
-  { immediate: true },
-)
-
-watch(playerSource, () => {
-  syncPlayerSource(false)
-})
-
-onBeforeUnmount(() => {
-  if (!playerAudio) return
-  playerAudio.pause()
-  playerAudio.src = ""
-  playerAudio.load()
-  playerAudio = null
-})
 </script>
 
 <template>
-  <main class="page page--index">
-    <section class="signal-hero">
-      <div class="signal-hero__copy brutal-panel brutal-panel--paper">
-        <p class="section-kicker">editorial signal lab</p>
-        <h1 class="signal-title">
+  <main class="zumy-page">
+    <section class="zumy-hero">
+      <div class="zumy-hero__copy">
+        <div class="zumy-block zumy-block--yellow" />
+        <p class="zumy-mark">FLAC BY ZUMY</p>
+        <h1 class="zumy-title">
           PURE
           <br />
-          SIGNAL
+          UNCUT
           <br />
-          DOWNLOADS.
+          AUDIO.
         </h1>
-        <p class="signal-lede">
-          Brutalist link capture for people who already know what they want: paste, resolve, queue, download.
-          No fake streaming chrome, no soft dashboard gloss.
+        <p class="zumy-copy">
+          Download master-quality FLAC directly from Tidal, Qobuz, and Amazon Music. No upsampling, no compression.
+          Just the truth.
         </p>
 
-        <div class="signal-actions">
-          <button type="button" class="action-button" :disabled="loading" @click="onSubmit">
-            {{ loading ? "Reading signal…" : queryLooksLikeUrl ? "Resolve link" : "Search catalog" }}
+        <div class="zumy-actions">
+          <button type="button" class="zumy-button zumy-button--primary" :disabled="loading" @click="onSubmit">
+            {{ loading ? "Working…" : queryLooksLikeUrl ? "Resolve link" : "Search catalog" }}
           </button>
-          <NuxtLink to="/docs" class="ghost-button ghost-button--frame">Inspect API atlas</NuxtLink>
+          <button type="button" class="zumy-button zumy-button--ghost" @click="clearWorkspace">
+            Reset desk
+          </button>
         </div>
-
-        <ul class="signal-notes">
-          <li v-for="item in fieldNotes" :key="item.label">
-            <span>{{ item.label }}</span>
-            <strong>{{ item.value }}</strong>
-          </li>
-        </ul>
       </div>
 
-      <aside class="signal-poster brutal-panel brutal-panel--poster">
-        <div class="poster-block poster-block--yellow" />
-        <div class="poster-art">
+      <div class="zumy-hero__art">
+        <div class="zumy-artframe">
           <img v-if="collectionArtwork" :src="collectionArtwork" alt="" loading="lazy" />
-          <div v-else class="poster-geometry">
-            <span />
-            <span />
-            <span />
+          <div v-else class="zumy-artframe__fallback">
+            <span>FLAC</span>
           </div>
+          <div class="zumy-artframe__tag">24-BIT / 192kHz</div>
         </div>
-        <div class="poster-tag">
-          {{ provider === "auto" ? "SMART ROUTING" : provider.toUpperCase() }}
-        </div>
-      </aside>
+      </div>
     </section>
 
-    <section class="workspace-grid">
-      <div class="desk-stack">
-        <section class="brutal-panel brutal-panel--paper composer-panel">
-          <div class="panel-heading">
-            <div>
-              <p class="section-kicker">capture desk</p>
-              <h2>Start from a link or a title.</h2>
-            </div>
-
-            <button
-              v-if="trimmedQuery || metadata || searchResults.length"
-              type="button"
-              class="ghost-button ghost-button--frame"
-              @click="clearWorkspace"
-            >
-              Reset
-            </button>
-          </div>
-
-          <form class="composer-panel__form" @submit.prevent="onSubmit">
-            <label class="field">
-              <span class="field__label">Spotify / Deezer URL or search query</span>
-              <textarea
-                v-model="query"
-                rows="4"
-                class="field__input field__input--area"
-                placeholder="Paste a track, album, playlist link, or type artist + song name"
-              />
-            </label>
-
-            <div class="choice-grid">
-              <div class="choice-group">
-                <span class="field__label">Provider routing</span>
-                <div class="choice-row">
-                  <button
-                    v-for="option in providerOptions"
-                    :key="option.value"
-                    type="button"
-                    class="choice-pill"
-                    :data-active="provider === option.value"
-                    @click="provider = option.value"
-                  >
-                    <strong>{{ option.label }}</strong>
-                    <small>{{ option.caption }}</small>
-                  </button>
-                </div>
-              </div>
-
-              <div class="choice-group">
-                <span class="field__label">Search source</span>
-                <div class="choice-row">
-                  <button
-                    v-for="option in sourceOptions"
-                    :key="option.value"
-                    type="button"
-                    class="choice-pill"
-                    :data-active="searchSource === option.value"
-                    @click="searchSource = option.value"
-                  >
-                    <strong>{{ option.label }}</strong>
-                    <small>{{ option.caption }}</small>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="notice-band" :data-tone="notice.tone">
-              <span>{{ notice.text }}</span>
-            </div>
-          </form>
-        </section>
-
-        <section v-if="searchResults.length" class="brutal-panel brutal-panel--paper result-stage">
-          <div class="panel-heading">
-            <div>
-              <p class="section-kicker">search spread</p>
-              <h2>Pick the closest hit.</h2>
-            </div>
-            <span class="metric-chip">{{ searchResults.length }} results</span>
-          </div>
-
-          <div class="result-layout">
-            <button
-              v-if="resultLead"
-              type="button"
-              class="result-lead"
-              @click="selectTrack(resultLead)"
-            >
-              <div class="result-lead__body">
-                <span class="metric-chip">{{ searchSource }}</span>
-                <strong>{{ resultLead.title }}</strong>
-                <p>{{ resultLead.artist }}</p>
-                <small v-if="resultLead.album">{{ resultLead.album }}</small>
-              </div>
-              <span v-if="resultLead.duration_ms" class="result-lead__time">
-                {{ formatDuration(resultLead.duration_ms) }}
-              </span>
-            </button>
-
-            <ul class="result-grid">
-              <li v-for="track in resultGrid" :key="buildTrackKey(track)">
-                <button type="button" class="result-card" @click="selectTrack(track)">
-                  <div>
-                    <strong>{{ track.title }}</strong>
-                    <p>{{ track.artist }}</p>
-                  </div>
-                  <small v-if="track.duration_ms">{{ formatDuration(track.duration_ms) }}</small>
-                </button>
-              </li>
-            </ul>
-          </div>
-        </section>
-
-        <section v-if="tracks.length" class="brutal-panel brutal-panel--paper collection-stage">
-          <div class="collection-stage__head">
-            <div class="collection-stage__copy">
-              <p class="section-kicker">{{ collectionLabel }}</p>
-              <h2>{{ collectionTitle }}</h2>
-              <p>{{ collectionSubtitle }}</p>
-            </div>
-
-            <div class="collection-stage__meta">
-              <span class="metric-chip">{{ tracks.length }} {{ tracks.length > 1 ? "tracks" : "track" }}</span>
-              <button
-                v-if="tracks.length > 1"
-                type="button"
-                class="action-button action-button--secondary"
-                :disabled="batchRunning && !queuePaused"
-                @click="downloadAll"
-              >
-                {{ batchRunning && !queuePaused ? "Queue running…" : `Queue all ${tracks.length}` }}
-              </button>
-            </div>
-          </div>
-
-          <ul class="track-grid">
-            <li
-              v-for="{ track, state, key } in trackCards"
-              :key="key"
-              class="track-card"
-              :data-status="state.status"
-            >
-              <div class="track-card__slot">
-                <span>{{ state.status === "success" ? "OK" : String(trackCards.findIndex((entry) => entry.key === key) + 1).padStart(2, "0") }}</span>
-              </div>
-
-              <div class="track-card__body">
-                <strong>{{ track.title }}</strong>
-                <p>{{ track.artist }}</p>
-                <div class="track-card__meta">
-                  <span v-if="track.album">{{ track.album }}</span>
-                  <span v-if="track.duration_ms">{{ formatDuration(track.duration_ms) }}</span>
-                  <span v-if="track.isrc">{{ track.isrc }}</span>
-                </div>
-                <p v-if="state.status === 'error'" class="track-card__error">
-                  {{ state.error || "Download failed." }}
-                </p>
-              </div>
-
-              <div class="track-card__aside">
-                <a
-                  v-if="state.status === 'success' && state.fileName"
-                  :href="fileUrlFor(track)"
-                  class="action-button action-button--secondary"
-                >
-                  Save file
-                </a>
-                <button
-                  v-else
-                  type="button"
-                  class="action-button action-button--secondary"
-                  :disabled="state.status === 'downloading' || batchRunning"
-                  @click="downloadSingle(track)"
-                >
-                  {{ stateLabel(track) }}
-                </button>
-                <button
-                  v-if="state.status !== 'success' && state.status !== 'downloading'"
-                  type="button"
-                  class="ghost-button ghost-button--frame track-card__queue"
-                  :disabled="isQueued(track)"
-                  @click="enqueueTrack(track)"
-                >
-                  {{ isQueued(track) ? "Queued" : "Add to queue" }}
-                </button>
-                <span class="status-pill" :data-status="state.status">{{ statusLabel(track) }}</span>
-              </div>
-            </li>
-          </ul>
-        </section>
+    <section class="zumy-search">
+      <div class="zumy-topbar">
+        <div class="zumy-topbar__brand">FLAC BY ZUMY</div>
+        <div class="zumy-topbar__links">
+          <span>Tidal</span>
+          <span>Qobuz</span>
+          <span>Amazon</span>
+        </div>
+        <NuxtLink to="/docs" class="zumy-topbar__docs">API atlas</NuxtLink>
       </div>
 
-      <aside class="queue-stack">
-        <section class="brutal-panel brutal-panel--paper player-stage">
-          <div class="panel-heading">
-            <div>
-              <p class="section-kicker">listening desk</p>
-              <h2>Player.</h2>
-            </div>
-            <span class="metric-chip">{{ playerTrack ? "live" : "idle" }}</span>
+      <div class="zumy-search__input">
+        <span class="zumy-search__icon">⌕</span>
+        <textarea
+          v-model="query"
+          rows="3"
+          class="zumy-search__field"
+          placeholder="ARTIST, ALBUM, TRACK OR PASTE A LINK"
+        />
+        <button type="button" class="zumy-search__submit" :disabled="loading" @click="onSubmit">
+          FIND
+        </button>
+      </div>
+
+      <div class="zumy-filters">
+        <button
+          v-for="option in providerOptions"
+          :key="option.value"
+          type="button"
+          class="zumy-filter"
+          :data-active="provider === option.value"
+          @click="provider = option.value"
+        >
+          {{ option.label }}
+        </button>
+      </div>
+
+      <div class="zumy-filters zumy-filters--secondary">
+        <button
+          v-for="option in sourceOptions"
+          :key="option.value"
+          type="button"
+          class="zumy-filter zumy-filter--light"
+          :data-active="searchSource === option.value"
+          @click="searchSource = option.value"
+        >
+          {{ option.label }}
+        </button>
+      </div>
+
+      <div class="zumy-notice" :data-tone="notice.tone">
+        {{ notice.text }}
+      </div>
+    </section>
+
+    <section v-if="searchResults.length" class="zumy-section">
+      <div class="zumy-section__head">
+        <h2>SEARCH RESULTS</h2>
+        <span>{{ searchResults.length }} HITS</span>
+      </div>
+
+      <div class="zumy-card-grid">
+        <button
+          v-for="track in searchResults"
+          :key="buildTrackKey(track)"
+          type="button"
+          class="zumy-result-card"
+          @click="selectTrack(track)"
+        >
+          <div class="zumy-result-card__cover">
+            <img v-if="track.cover_url" :src="track.cover_url" alt="" loading="lazy" />
+            <div v-else class="zumy-result-card__cover--fallback">FLAC</div>
+          </div>
+          <div class="zumy-result-card__copy">
+            <strong>{{ track.title }}</strong>
+            <p>{{ track.artist }}</p>
+            <small v-if="track.album">{{ track.album }}</small>
+          </div>
+          <div class="zumy-result-card__meta">
+            <span v-if="track.duration_ms">{{ formatDuration(track.duration_ms) }}</span>
+            <span class="zumy-mini-chip">SELECT</span>
+          </div>
+        </button>
+      </div>
+    </section>
+
+    <section v-if="tracks.length" class="zumy-section">
+      <div class="zumy-section__head">
+        <div>
+          <h2>{{ collectionTitle }}</h2>
+          <p>{{ collectionLabel }} · {{ collectionSubtitle }}</p>
+        </div>
+        <button
+          v-if="tracks.length > 1"
+          type="button"
+          class="zumy-button zumy-button--primary"
+          :disabled="batchRunning"
+          @click="downloadAll"
+        >
+          {{ batchRunning ? "Downloading…" : `Download all ${tracks.length}` }}
+        </button>
+      </div>
+
+      <div class="zumy-list">
+        <article
+          v-for="track in tracks"
+          :key="buildTrackKey(track)"
+          class="zumy-list__item"
+          :data-status="stateFor(track).status"
+        >
+          <div class="zumy-list__cover">
+            <img v-if="track.cover_url" :src="track.cover_url" alt="" loading="lazy" />
+            <div v-else class="zumy-list__cover--fallback">FLAC</div>
           </div>
 
-          <div v-if="playerTrack" class="player-display">
-            <div class="player-display__art">
-              <img v-if="playerTrack.cover_url" :src="playerTrack.cover_url" alt="" loading="lazy" />
-              <div v-else class="player-display__fallback">
-                <span>FLAC</span>
-              </div>
-            </div>
-
-            <div class="player-display__copy">
-              <strong>{{ playerTrack.title }}</strong>
-              <p>{{ playerTrack.artist }}</p>
-              <small>{{ playerTrack.album || "Single file" }}</small>
-              <span class="player-display__source">{{ playerSourceLabel }}</span>
-            </div>
+          <div class="zumy-list__copy">
+            <strong>{{ track.title }}</strong>
+            <p>{{ track.artist }}</p>
+            <small>
+              <template v-if="track.album">{{ track.album }}</template>
+              <template v-if="track.duration_ms"> · {{ formatDuration(track.duration_ms) }}</template>
+              <template v-if="track.isrc"> · {{ track.isrc }}</template>
+            </small>
+            <em v-if="stateFor(track).status === 'error'">{{ stateFor(track).error || "Download failed" }}</em>
+            <span v-else-if="stateFor(track).status === 'downloading'">{{ statusLabel(track) }}</span>
           </div>
 
-          <div v-if="playerTrack" class="player-controls">
+          <div class="zumy-list__actions">
+            <a
+              v-if="stateFor(track).status === 'success' && stateFor(track).fileName"
+              :href="fileUrlFor(track)"
+              class="zumy-button zumy-button--ghost zumy-button--small"
+            >
+              Save
+            </a>
             <button
+              v-else
               type="button"
-              class="action-button action-button--secondary"
-              :disabled="!playerSource"
-              @click="togglePlayback"
+              class="zumy-button zumy-button--ghost zumy-button--small"
+              :disabled="stateFor(track).status === 'downloading' || batchRunning"
+              @click="downloadSingle(track)"
             >
-              {{ playerPlaying ? "Pause" : "Play" }}
+              {{ stateLabel(track) }}
             </button>
-            <span class="metric-chip">
-              {{ formatDuration(playerCurrentTime * 1000) }} / {{ formatDuration((playerDuration || 0) * 1000) }}
-            </span>
+            <span class="zumy-mini-chip" :data-status="stateFor(track).status">{{ statusLabel(track) }}</span>
           </div>
-
-          <input
-            v-if="playerTrack"
-            class="player-slider"
-            type="range"
-            min="0"
-            :max="Math.max(playerDuration, 0)"
-            :step="1"
-            :value="playerCurrentTime"
-            :disabled="!playerSource"
-            @input="seekPlayback"
-          />
-
-          <p v-if="!playerTrack" class="queue-empty">
-            Select a track from the desk to prime the player.
-          </p>
-        </section>
-
-        <section class="brutal-panel brutal-panel--paper queue-stage">
-          <div class="panel-heading">
-            <div>
-              <p class="section-kicker">download queue</p>
-              <h2>Active transfers.</h2>
-            </div>
-            <span class="metric-chip">{{ activeDownloadCards.length }}</span>
-          </div>
-
-          <div v-if="activeDownloadCards.length" class="queue-list">
-            <article
-              v-for="{ track, state, key } in activeDownloadCards"
-              :key="key"
-              class="queue-card"
-            >
-              <div class="queue-card__top">
-                <div>
-                  <strong>{{ track.title }}</strong>
-                  <p>{{ track.artist }}</p>
-                </div>
-                <span class="queue-card__percent">{{ state.progress || 0 }}%</span>
-              </div>
-
-              <div class="queue-card__chips">
-                <span class="mini-chip mini-chip--dark">FLAC</span>
-                <span class="mini-chip mini-chip--signal">{{ provider === "auto" ? "SMART" : provider.toUpperCase() }}</span>
-              </div>
-
-              <div class="progress-rail">
-                <span class="progress-rail__fill" :style="{ width: `${state.progress || 0}%` }" />
-                <span class="progress-rail__stripes" />
-              </div>
-
-              <div class="queue-card__foot">
-                <span>{{ state.detail || "connecting" }}</span>
-                <span>{{ track.duration_ms ? formatDuration(track.duration_ms) : "duration pending" }}</span>
-              </div>
-            </article>
-          </div>
-          <p v-else class="queue-empty">
-            No active downloads yet. Start one track or launch a full collection queue.
-          </p>
-        </section>
-
-        <section class="brutal-panel brutal-panel--paper queue-stage">
-          <div class="panel-heading">
-            <div>
-              <p class="section-kicker">queued desk</p>
-              <h2>Next in line.</h2>
-            </div>
-            <div class="queue-stage__controls">
-              <span class="metric-chip">{{ queuedTrackCards.length }}</span>
-              <button
-                v-if="queuedTrackCards.length"
-                type="button"
-                class="ghost-button ghost-button--frame queue-stage__toggle"
-                @click="toggleQueuePaused"
-              >
-                {{ queuePaused ? "Resume queued" : "Pause queued" }}
-              </button>
-            </div>
-          </div>
-
-          <ul v-if="queuedTrackCards.length" class="queued-list">
-            <li v-for="{ track, key } in queuedTrackCards" :key="key" class="queued-item">
-              <div class="queued-item__mark">Q</div>
-              <div class="queued-item__copy">
-                <strong>{{ track.title }}</strong>
-                <p>{{ track.artist }}</p>
-              </div>
-              <div class="queued-item__actions">
-                <small>{{ track.duration_ms ? formatDuration(track.duration_ms) : "—" }}</small>
-                <button type="button" class="queued-item__remove" @click="removeQueuedTrack(key)">Remove</button>
-              </div>
-            </li>
-          </ul>
-          <p v-else class="queue-empty">
-            Queue items appear here once a track sheet is resolved.
-          </p>
-        </section>
-
-        <section v-if="readyDownloadCards.length" class="brutal-panel brutal-panel--paper queue-stage">
-          <div class="panel-heading">
-            <div>
-              <p class="section-kicker">ready files</p>
-              <h2>Captured.</h2>
-            </div>
-            <span class="metric-chip">{{ readyDownloadCards.length }}</span>
-          </div>
-
-          <ul class="queued-list">
-            <li v-for="{ track, state, key } in readyDownloadCards" :key="key" class="queued-item queued-item--ready">
-              <div class="queued-item__mark">OK</div>
-              <div class="queued-item__copy">
-                <strong>{{ track.title }}</strong>
-                <p>{{ state.fileName }}</p>
-              </div>
-              <div class="queued-item__actions">
-                <button type="button" class="queued-item__remove" @click="focusPlayer(track)">Listen</button>
-                <a :href="fileUrlFor(track)" class="ghost-button ghost-button--frame">Save</a>
-              </div>
-            </li>
-          </ul>
-        </section>
-      </aside>
+        </article>
+      </div>
     </section>
   </main>
 </template>
