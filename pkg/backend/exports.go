@@ -10,6 +10,20 @@ import (
 	"time"
 )
 
+var (
+	downloadFromTidalFn      = downloadFromTidal
+	downloadFromQobuzFn      = downloadFromQobuz
+	downloadFromAmazonFn     = downloadFromAmazon
+	getAudioQualityFn        = GetAudioQuality
+	newSongLinkClientFn      = NewSongLinkClient
+	checkTrackAvailabilityFn = func(c *SongLinkClient, spotifyID, isrc string) (*TrackAvailability, error) {
+		return c.CheckTrackAvailability(spotifyID, isrc)
+	}
+	checkAvailabilityFromDeezerFn = func(c *SongLinkClient, deezerID string) (*TrackAvailability, error) {
+		return c.CheckAvailabilityFromDeezer(deezerID)
+	}
+)
+
 // ParseSpotifyURL parses and validates a Spotify URL
 // Returns JSON with type (track/album/playlist) and ID
 func ParseSpotifyURL(url string) (string, error) {
@@ -100,8 +114,8 @@ func SearchSpotifyAll(query string, trackLimit, artistLimit int) (string, error)
 // CheckAvailability checks track availability on streaming services
 // Returns JSON with availability info for Tidal, Qobuz, Amazon
 func CheckAvailability(spotifyID, isrc string) (string, error) {
-	client := NewSongLinkClient()
-	availability, err := client.CheckTrackAvailability(spotifyID, isrc)
+	client := newSongLinkClientFn()
+	availability, err := checkTrackAvailabilityFn(client, spotifyID, isrc)
 	if err != nil {
 		return "", err
 	}
@@ -132,9 +146,21 @@ type DownloadRequest struct {
 	TrackNumber          int    `json:"track_number"`
 	DiscNumber           int    `json:"disc_number"`
 	TotalTracks          int    `json:"total_tracks"`
+	TotalDiscs           int    `json:"total_discs,omitempty"`
 	ReleaseDate          string `json:"release_date"`
 	ItemID               string `json:"item_id"`     // Unique ID for progress tracking
 	DurationMS           int    `json:"duration_ms"` // Expected duration in milliseconds (for verification)
+	Source               string `json:"source,omitempty"`
+	Genre                string `json:"genre,omitempty"`
+	Label                string `json:"label,omitempty"`
+	Copyright            string `json:"copyright,omitempty"`
+	Composer             string `json:"composer,omitempty"`
+	TidalID              string `json:"tidal_id,omitempty"`
+	QobuzID              string `json:"qobuz_id,omitempty"`
+	DeezerID             string `json:"deezer_id,omitempty"`
+	LyricsMode           string `json:"lyrics_mode,omitempty"`
+	UseExtensions        bool   `json:"use_extensions,omitempty"`
+	UseFallback          bool   `json:"use_fallback,omitempty"`
 }
 
 // DownloadResponse represents the result of a download
@@ -173,6 +199,31 @@ type DownloadResult struct {
 	ISRC        string
 }
 
+func normalizeDownloadRequest(req *DownloadRequest) {
+	if req == nil {
+		return
+	}
+
+	req.Service = strings.ToLower(strings.TrimSpace(req.Service))
+	req.TrackName = strings.TrimSpace(req.TrackName)
+	req.ArtistName = strings.TrimSpace(req.ArtistName)
+	req.AlbumName = strings.TrimSpace(req.AlbumName)
+	req.AlbumArtist = strings.TrimSpace(req.AlbumArtist)
+	req.OutputDir = strings.TrimSpace(req.OutputDir)
+	req.Source = strings.TrimSpace(req.Source)
+	req.Genre = strings.TrimSpace(req.Genre)
+	req.Label = strings.TrimSpace(req.Label)
+	req.Copyright = strings.TrimSpace(req.Copyright)
+	req.Composer = strings.TrimSpace(req.Composer)
+	req.TidalID = strings.TrimSpace(req.TidalID)
+	req.QobuzID = strings.TrimSpace(req.QobuzID)
+	req.DeezerID = strings.TrimSpace(req.DeezerID)
+
+	if req.SpotifyID == "" && req.DeezerID != "" {
+		req.SpotifyID = "deezer:" + req.DeezerID
+	}
+}
+
 // DownloadTrack downloads a track from the specified service
 // requestJSON is a JSON string of DownloadRequest
 // Returns JSON string of DownloadResponse
@@ -182,19 +233,14 @@ func DownloadTrack(requestJSON string) (string, error) {
 		return errorResponse("Invalid request: " + err.Error())
 	}
 
-	// Trim whitespace from string fields to prevent filename/path issues
-	req.TrackName = strings.TrimSpace(req.TrackName)
-	req.ArtistName = strings.TrimSpace(req.ArtistName)
-	req.AlbumName = strings.TrimSpace(req.AlbumName)
-	req.AlbumArtist = strings.TrimSpace(req.AlbumArtist)
-	req.OutputDir = strings.TrimSpace(req.OutputDir)
+	normalizeDownloadRequest(&req)
 
 	var result DownloadResult
 	var err error
 
 	switch req.Service {
 	case "tidal":
-		tidalResult, tidalErr := downloadFromTidal(req)
+		tidalResult, tidalErr := downloadFromTidalFn(req)
 		if tidalErr == nil {
 			result = DownloadResult{
 				FilePath:    tidalResult.FilePath,
@@ -211,7 +257,7 @@ func DownloadTrack(requestJSON string) (string, error) {
 		}
 		err = tidalErr
 	case "qobuz":
-		qobuzResult, qobuzErr := downloadFromQobuz(req)
+		qobuzResult, qobuzErr := downloadFromQobuzFn(req)
 		if qobuzErr == nil {
 			result = DownloadResult{
 				FilePath:    qobuzResult.FilePath,
@@ -228,7 +274,7 @@ func DownloadTrack(requestJSON string) (string, error) {
 		}
 		err = qobuzErr
 	case "amazon":
-		amazonResult, amazonErr := downloadFromAmazon(req)
+		amazonResult, amazonErr := downloadFromAmazonFn(req)
 		if amazonErr == nil {
 			result = DownloadResult{
 				FilePath:    amazonResult.FilePath,
@@ -256,7 +302,7 @@ func DownloadTrack(requestJSON string) (string, error) {
 	if len(result.FilePath) > 7 && result.FilePath[:7] == "EXISTS:" {
 		actualPath := result.FilePath[7:]
 		// Read actual quality from existing file
-		quality, qErr := GetAudioQuality(actualPath)
+		quality, qErr := getAudioQualityFn(actualPath)
 		if qErr == nil {
 			result.BitDepth = quality.BitDepth
 			result.SampleRate = quality.SampleRate
@@ -282,7 +328,7 @@ func DownloadTrack(requestJSON string) (string, error) {
 	}
 
 	// Read actual quality from downloaded file (more accurate than API)
-	quality, qErr := GetAudioQuality(result.FilePath)
+	quality, qErr := getAudioQualityFn(result.FilePath)
 	if qErr == nil {
 		result.BitDepth = quality.BitDepth
 		result.SampleRate = quality.SampleRate
@@ -311,6 +357,33 @@ func DownloadTrack(requestJSON string) (string, error) {
 	return string(jsonBytes), nil
 }
 
+// DownloadByStrategy routes download requests using the fork's built-in providers.
+// It preserves upstream-style request semantics for use_fallback while keeping
+// this fork's current direct provider implementation.
+func DownloadByStrategy(requestJSON string) (string, error) {
+	var req DownloadRequest
+	if err := json.Unmarshal([]byte(requestJSON), &req); err != nil {
+		return errorResponse("Invalid request: " + err.Error())
+	}
+
+	normalizeDownloadRequest(&req)
+
+	if req.UseExtensions {
+		GoLog("[DownloadByStrategy] Extensions requested but unsupported in this fork, using built-in providers\n")
+	}
+
+	normalizedJSON, err := json.Marshal(req)
+	if err != nil {
+		return errorResponse("Invalid request: " + err.Error())
+	}
+
+	if req.UseFallback {
+		return DownloadWithFallback(string(normalizedJSON))
+	}
+
+	return DownloadTrack(string(normalizedJSON))
+}
+
 // DownloadWithFallback tries to download from services in order
 // Starts with the preferred service from request, then tries others
 func DownloadWithFallback(requestJSON string) (string, error) {
@@ -319,17 +392,16 @@ func DownloadWithFallback(requestJSON string) (string, error) {
 		return errorResponse("Invalid request: " + err.Error())
 	}
 
-	// Trim whitespace from string fields to prevent filename/path issues
-	req.TrackName = strings.TrimSpace(req.TrackName)
-	req.ArtistName = strings.TrimSpace(req.ArtistName)
-	req.AlbumName = strings.TrimSpace(req.AlbumName)
-	req.AlbumArtist = strings.TrimSpace(req.AlbumArtist)
-	req.OutputDir = strings.TrimSpace(req.OutputDir)
+	normalizeDownloadRequest(&req)
 
 	// Build service order starting with preferred service
 	allServices := []string{"tidal", "qobuz", "amazon"}
 	preferredService := req.Service
 	if preferredService == "" {
+		preferredService = "tidal"
+	}
+	if !isValidService(preferredService) {
+		GoLog("[DownloadWithFallback] Invalid preferred service '%s', defaulting to tidal\n", preferredService)
 		preferredService = "tidal"
 	}
 
@@ -356,7 +428,7 @@ func DownloadWithFallback(requestJSON string) (string, error) {
 
 		switch service {
 		case "tidal":
-			tidalResult, tidalErr := downloadFromTidal(req)
+			tidalResult, tidalErr := downloadFromTidalFn(req)
 			if tidalErr == nil {
 				result = DownloadResult{
 					FilePath:    tidalResult.FilePath,
@@ -375,7 +447,7 @@ func DownloadWithFallback(requestJSON string) (string, error) {
 			}
 			err = tidalErr
 		case "qobuz":
-			qobuzResult, qobuzErr := downloadFromQobuz(req)
+			qobuzResult, qobuzErr := downloadFromQobuzFn(req)
 			if qobuzErr == nil {
 				result = DownloadResult{
 					FilePath:    qobuzResult.FilePath,
@@ -394,7 +466,7 @@ func DownloadWithFallback(requestJSON string) (string, error) {
 			}
 			err = qobuzErr
 		case "amazon":
-			amazonResult, amazonErr := downloadFromAmazon(req)
+			amazonResult, amazonErr := downloadFromAmazonFn(req)
 			if amazonErr == nil {
 				result = DownloadResult{
 					FilePath:    amazonResult.FilePath,
@@ -412,6 +484,8 @@ func DownloadWithFallback(requestJSON string) (string, error) {
 				GoLog("[DownloadWithFallback] Amazon error: %v\n", amazonErr)
 			}
 			err = amazonErr
+		default:
+			err = fmt.Errorf("unknown service: %s", service)
 		}
 
 		if err == nil {
@@ -419,7 +493,7 @@ func DownloadWithFallback(requestJSON string) (string, error) {
 			if len(result.FilePath) > 7 && result.FilePath[:7] == "EXISTS:" {
 				actualPath := result.FilePath[7:]
 				// Read actual quality from existing file
-				quality, qErr := GetAudioQuality(actualPath)
+				quality, qErr := getAudioQualityFn(actualPath)
 				if qErr == nil {
 					result.BitDepth = quality.BitDepth
 					result.SampleRate = quality.SampleRate
@@ -445,7 +519,7 @@ func DownloadWithFallback(requestJSON string) (string, error) {
 			}
 
 			// Read actual quality from downloaded file (more accurate than API)
-			quality, qErr := GetAudioQuality(result.FilePath)
+			quality, qErr := getAudioQualityFn(result.FilePath)
 			if qErr == nil {
 				result.BitDepth = quality.BitDepth
 				result.SampleRate = quality.SampleRate
@@ -477,6 +551,15 @@ func DownloadWithFallback(requestJSON string) (string, error) {
 	}
 
 	return errorResponse("All services failed. Last error: " + lastErr.Error())
+}
+
+func isValidService(service string) bool {
+	switch service {
+	case "tidal", "qobuz", "amazon":
+		return true
+	default:
+		return false
+	}
 }
 
 // GetDownloadProgress returns current download progress
@@ -931,8 +1014,8 @@ func GetSpotifyMetadataWithDeezerFallback(spotifyURL string) (string, error) {
 // CheckAvailabilityFromDeezerID checks track availability using Deezer track ID as source
 // Returns JSON with availability info for Spotify, Tidal, Amazon, etc.
 func CheckAvailabilityFromDeezerID(deezerTrackID string) (string, error) {
-	client := NewSongLinkClient()
-	availability, err := client.CheckAvailabilityFromDeezer(deezerTrackID)
+	client := newSongLinkClientFn()
+	availability, err := checkAvailabilityFromDeezerFn(client, deezerTrackID)
 	if err != nil {
 		return "", err
 	}
