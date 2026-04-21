@@ -4,10 +4,24 @@
   "description": "Web frontend build for zFlac Downloader",
   "private": true,
   "scripts": {
-    "build": "cd web && npm install --include=dev && npm run build",
-    "heroku-postbuild": "cd web && npm install --include=dev && npm run build"
+    "build": "cd web && npm ci && npm run generate && cd .. && rm -rf static && mkdir -p static && cp -a web/.output/public/. static/",
+    "heroku-postbuild": "cd web && npm ci && npm run generate && cd .. && rm -rf static && mkdir -p static && cp -a web/.output/public/. static/",
+    "lint:go": "golangci-lint run ./pkg/api ./pkg/config .",
+    "lint:web": "cd web && npm run lint",
+    "dupcheck": "jscpd --config .jscpd.json",
+    "secret-scan": "gitleaks detect --no-banner --source . --config .gitleaks.toml --redact --verbose",
+    "benchmark:validate": "go run ./cmd/provider_benchmark --validate-only",
+    "benchmark:smoke": "go run ./cmd/provider_benchmark --mode availability --iterations 1 --sample-limit 1 --output docs/benchmark-evidence/smoke",
+    "benchmark:compare": "go run ./cmd/provider_benchmark_compare",
+    "benchmark:full:baseline": "scripts/benchmark/run_full_benchmark.sh --stage baseline",
+    "benchmark:full:post": "scripts/benchmark/run_full_benchmark.sh --stage post",
+    "bot:regression": "scripts/benchmark/run_bot_regression.sh",
+    "quality:all": "npm run lint:web && npm run lint:go && npm run dupcheck"
   },
   "engines": {
-    "node": "20.x"
+    "node": "22.x"
+  },
+  "devDependencies": {
+    "jscpd": "^4.0.5"
   }
 }
